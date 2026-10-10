@@ -1,19 +1,26 @@
-import { amortizationSchedule, calculateMortgage } from './mortgage.js';
+import { calculateMortgage } from './mortgage.js';
 import { mapStates } from './us-map.js?v=maps-3';
-import { mapMarkup, bindMap, closeStateMap, zipCount } from './map-ui.js?v=home-values-2';
+import { mapMarkup, bindMap, closeStateMap, zipCount } from './map-ui.js?v=pinch-1';
 import { getZipHomeValue } from './home-values.js?v=home-values-2';
-import { getZipPropertyTax } from './property-taxes.js';
+import { getZipPropertyTax, estimateTaxPercent } from './property-taxes.js?v=estimates-1';
+import { getInsuranceBenchmarks, estimateInsurance } from './insurance.js';
+import { equityChartMarkup, bindEquityChart } from './equity-chart.js';
+import { nearbyDefaults, regionalDefaults } from './area-estimates.js';
+import { getPriceDistribution, renderPriceDistribution } from './price-distribution.js';
 import { getMortgageRates, rateForTerm, isRateStale } from './rates.js';
 import { rateModalMarkup, bindRateModal } from './rate-modal.js?v=rates-taxes-2';
 
 const stateNames = Object.fromEntries(mapStates.map(s=>[s.code,s.name]));
 let selectedState = 'CA';
 let selectedZip = '94107';
-let details = { price: 680000, down: 20, rate: 0, term: 30, tax: 0, taxMode: 'annual', annualTax: null, insurance: 180, hoa: 0, pmiRate: .55, extra: 0, appreciation: 3 };
+let mapSelection = null;
+let details = { price: 680000, down: 20, rate: 0, term: 30, tax: null, taxMode: 'percent', annualTax: null, insurance: 0, dwellingCoverage: 400000, hoa: 0, pmiRate: .55, extra: 0, appreciation: 3 };
 let homeValue = { status: 'idle', zip: null, data: null };
 let homeValueRequest = 0, priceEdited = false;
 let taxState = { status: 'idle', zip: null, data: null }, taxRequest = 0, taxEdited = false;
 let rates = { status: 'loading', data: null }, rateMode = 'benchmark';
+let insuranceState = { status:'loading', data:null }, insuranceMode = 'estimate';
+let distributionState={status:'loading',selectedZip,data:null},distributionRequest=0;
 
 function money(n, digits=0) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:digits}).format(n); }
 function payment() { const result = calculateMortgage(details); return { ...result, pi: result.principalAndInterest, tax: result.propertyTax }; }
@@ -39,8 +46,8 @@ function app() {
             <label class="state-select">Choose a state<select aria-label="Choose a state"><option value="">Select a state</option>${mapStates.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(s=>`<option value="${s.code}">${s.name}</option>`).join('')}</select></label>
           </div>
           <div class="map-wrap" id="mapWrap">
-            <div class="geographic-map">${mapMarkup(selectedState)}</div>
-            <div class="map-label"><strong>Choose a state</strong><span>Select anywhere on the map to begin</span></div>
+            <div class="geographic-map">${mapMarkup(mapSelection)}</div>
+            <div class="map-label"><strong>Choose a state</strong><span>Tap a state · Drag to pan · Pinch to zoom</span></div>
             <div class="compass">N<br><span>✣</span></div>
             <div class="map-controls"><button aria-label="Zoom in">+</button><button aria-label="Zoom out">−</button><button aria-label="Reset US map">⌂</button></div>
           </div>
@@ -73,7 +80,7 @@ function app() {
       <div class="state-panel-head"><span class="step">02</span><div><p class="mini">EXPLORE THE STATE</p><h2 id="state-title">${stateNames[selectedState]}</h2></div></div>
       <p class="state-instructions">Select an outlined ZIP area, or search by city or ZIP code.</p>
       <div class="state-explorer">
-        <div class="state-map-card"><div class="state-map-stage"></div><div class="state-map-controls"><button aria-label="Zoom into state">+</button><button aria-label="Zoom out of state">−</button><button aria-label="Reset state map">⌂</button></div><p class="state-map-hint">Every mapped ZIP area is outlined. Zoom to read smaller ZIP labels; drag to pan.</p></div>
+        <div class="state-map-card"><div class="state-map-stage"></div><div class="state-map-controls"><button aria-label="Zoom into state">+</button><button aria-label="Zoom out of state">−</button><button aria-label="Reset state map">⌂</button></div><p class="state-map-hint">Every mapped ZIP area is outlined. Pinch with two fingers to zoom; drag to pan.</p></div>
         <div class="zip-browser"><label for="zip-search">Find your ZIP code</label><input id="zip-search" type="search" placeholder="City or ZIP code" autocomplete="off"><p class="zip-result-count" role="status"></p><div class="zip-results"></div><p class="zip-source-note">Census ZIP areas (2010). Postal ZIPs without mapped areas remain searchable.</p></div>
       </div>
     </div>
@@ -81,10 +88,12 @@ function app() {
       <button class="close-modal" aria-label="Close">×</button><span class="step">03</span><p class="mini">YOUR NUMBERS</p><h2>Shape your mortgage</h2>
       <p class="calc-assumptions">Start with sourced defaults. Your lender quote and the home's assessed value and exemptions determine your actual rate and tax bill.</p>
       <div class="field price-field"><label for="priceAmount">Home price <output id="priceOut" for="price priceAmount">${money(details.price)}</output></label><div class="price-amount"><span aria-hidden="true">$</span><input id="priceAmount" type="number" min="1" max="100000000" step="1" inputmode="numeric" required placeholder="Enter home price" aria-label="Home price in dollars" value="${details.price}"></div><input id="price" type="range" min="1" max="${Math.max(1500000,Math.ceil(details.price*1.25/100000)*100000)}" step="1" value="${details.price}" aria-label="Home price slider"><p class="price-source" role="status" aria-live="polite"></p></div>
+      <div class="price-distribution"></div>
       <div class="field"><label>Down payment <output id="downOut">${details.down}% · ${money(details.price*details.down/100)}</output></label><input id="down" type="range" min="3" max="50" value="${details.down}"></div>
       <div class="field"><label for="rate">Interest rate <output id="rateOut">${details.rate.toFixed(2)}%</output></label><input id="rate" type="range" min="0" max="20" step="0.01" value="${details.rate}"><div class="rate-actions"><button class="rate-trends">↗ Rate trends</button><button class="use-benchmark">Use weekly benchmark</button></div><p class="rate-source source-note" role="status"></p></div>
-      <div class="tax-field"><label for="tax">Property tax <select id="taxMode" aria-label="Property tax input format"><option value="annual" ${details.taxMode==='annual'?'selected':''}>Annual bill ($)</option><option value="percent" ${details.taxMode==='percent'?'selected':''}>Percent of home price</option></select></label><div class="tax-amount"><span class="tax-prefix">${details.taxMode==='annual'?'$':''}</span><input id="tax" type="number" min="0" max="100000000" step="any" required placeholder="Enter annual tax" value="${details.taxMode==='annual'?(details.annualTax??''):details.tax}" aria-label="Property tax"><span class="tax-unit">${details.taxMode==='annual'?'/ yr':'% / yr'}</span></div><p class="tax-source source-note" role="status" aria-live="polite"></p><button class="use-zip-tax">Use ZIP median</button></div>
-      <div class="input-grid"><label>Insurance <span>$ <input id="insurance" type="number" min="0" step="10" value="${details.insurance}"> / mo</span></label><label>HOA dues <span>$ <input id="hoa" type="number" min="0" step="25" value="${details.hoa}"> / mo</span></label><label>Extra payment <span>$ <input id="extra" type="number" min="0" step="50" value="${details.extra}"> / mo</span></label></div>
+      <div class="tax-field"><label for="tax">Property tax <select id="taxMode" aria-label="Property tax input format"><option value="percent" ${details.taxMode==='percent'?'selected':''}>Percent of home price</option><option value="annual" ${details.taxMode==='annual'?'selected':''}>Annual bill ($)</option></select></label><div class="tax-amount"><span class="tax-prefix">${details.taxMode==='annual'?'$':''}</span><input id="tax" type="number" min="0" max="100000000" step="any" required placeholder="Enter tax percentage" value="${details.taxMode==='annual'?(details.annualTax??''):(details.tax??'')}" aria-label="Property tax"><span class="tax-unit">${details.taxMode==='annual'?'/ yr':'% of price / yr'}</span></div><p class="tax-payment-note"></p><p class="tax-source source-note" role="status" aria-live="polite"></p><button class="use-zip-tax">Use ZIP tax estimate</button></div>
+      <div class="insurance-field"><div class="insurance-heading"><label for="insurance">Home insurance</label><button class="use-insurance-estimate">Use state estimate</button></div><div class="input-grid"><label for="dwellingCoverage">Dwelling rebuild coverage <span>$ <input id="dwellingCoverage" type="number" min="1" max="100000000" step="any" value="${details.dwellingCoverage}" required></span></label><label for="insurance">Monthly premium <span>$ <input id="insurance" type="number" min="0" max="1000000" step="any" value="${insuranceMode==='estimate'&&!insuranceState.data?'':details.insurance}" required> / mo</span></label></div><p class="insurance-source source-note" role="status" aria-live="polite"></p></div>
+      <div class="input-grid"><label>HOA dues <span>$ <input id="hoa" type="number" min="0" step="25" value="${details.hoa}"> / mo</span></label><label>Extra payment <span>$ <input id="extra" type="number" min="0" step="50" value="${details.extra}"> / mo</span></label><label>Home appreciation <span><input id="appreciation" type="number" min="-20" max="20" step="any" value="${details.appreciation}"> % / yr</span></label></div>
       <label class="term-label">Loan term</label><div class="terms">${[15,20,30].map(t=>`<button class="${t===details.term?'active':''}" data-term="${t}">${t} year</button>`).join('')}</div>
       <button class="calculate">See my estimate <span>→</span></button>
     </div>
@@ -97,11 +106,11 @@ function app() {
   bind();
 }
 
-function chartSvg(){ const schedule=amortizationSchedule(details); const sampled=schedule.filter((_,i)=>i%Math.max(1,Math.ceil(schedule.length/12))===0||i===schedule.length-1); const max=Math.max(...sampled.map(p=>p.homeValue)); const pts=sampled.map((p,i)=>`${i/(sampled.length-1)*420},${180-p.equity/max*165}`).join(' '); return `<svg viewBox="0 0 430 205"><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#b4a7f8" stop-opacity=".55"/><stop offset="1" stop-color="#b4a7f8" stop-opacity="0"/></linearGradient></defs><path d="M0 180 L${pts.replaceAll(' ',', L')} L420 190 L0 190Z" fill="url(#fill)"/><polyline points="${pts}" fill="none" stroke="#7364d9" stroke-width="4" stroke-linecap="round"/><g class="axis"><text x="0" y="204">Now</text><text x="130" y="204">10 yr</text><text x="270" y="204">20 yr</text><text x="390" y="204">${details.term} yr</text></g></svg>`; }
+function chartSvg(){ return equityChartMarkup(details); }
 function compareRow(term){ const rate=rateMode==='benchmark'&&rates.data?rateForTerm(rates.data,term):details.rate; const val=calculateMortgage({...details,term,rate}).total; return `<button class="compare-row ${term===details.term?'active':''}" data-compare="${term}"><span>${term}-year fixed<small>${rate.toFixed(2)}% · ${rateMode==='manual'?'your rate':term===20?'30-year proxy':'weekly benchmark'}</small></span><strong>${money(val)}<small>/mo</small></strong></button>`; }
 
 function bind(){
-  bindMap((code,zip)=>{selectedState=code;openCalculator(zip,true);});
+  bindMap((code,zip)=>{selectedState=code;mapSelection=code;openCalculator(zip,true);});
   document.querySelector('.close-panel').onclick=closeAll; document.querySelector('.overlay').onclick=closeAll;
   document.querySelector('.close-modal').onclick=closeAll; document.querySelector('.edit').onclick=()=>openCalculator(selectedZip);
   document.querySelector('.calc-modal').onkeydown=e=>{
@@ -118,16 +127,20 @@ function bind(){
   document.querySelector('#rate').oninput=e=>{rateMode='manual';details.rate=+e.target.value;updateOutput();refreshPriceEstimate();renderDataSources();renderPriceSource();};
   document.querySelector('.use-benchmark').onclick=useBenchmark;
   bindRateModal({getRates:()=>rates, onUse:useBenchmark, onRetry:startRates});
-  document.querySelector('#tax').oninput=e=>{taxEdited=true;taxState.status='manual';if(e.target.value&&e.target.validity.valid){details[details.taxMode==='annual'?'annualTax':'tax']=+e.target.value;}renderDataSources();refreshPriceEstimate();renderPriceSource();};
+  document.querySelector('#tax').oninput=e=>{taxEdited=true;taxState.status='manual';details[details.taxMode==='annual'?'annualTax':'tax']=e.target.value!==''&&e.target.validity.valid?+e.target.value:null;renderDataSources();refreshPriceEstimate();renderPriceSource();};
   document.querySelector('#taxMode').onchange=e=>{
     const hasTax=document.querySelector('#tax').value!=='';
     const annual=details.taxMode==='annual'?(details.annualTax??0):details.price*details.tax/100;
     details.taxMode=e.target.value;
     details.annualTax=hasTax?annual:null;details.tax=hasTax&&details.price>0?+(annual/details.price*100).toFixed(5):null;
+    if(!hasTax&&details.taxMode==='annual'&&taxState.data){details.annualTax=taxState.data.annualTax;}
     if(hasTax){taxEdited=true;taxState.status='manual';}syncTaxInput();renderDataSources();refreshPriceEstimate();renderPriceSource();
   };
-  document.querySelector('.use-zip-tax').onclick=()=>{if(taxState.data){taxEdited=false;taxState.status='loaded';details.taxMode='annual';details.annualTax=taxState.data.annualTax;syncTaxInput();refreshPriceEstimate();renderPriceSource();renderDataSources();}else startTaxLookup(selectedZip);};
-  ['insurance','hoa','extra'].forEach(id=>document.querySelector('#'+id).oninput=e=>{details[id]=+e.target.value;refreshPriceEstimate();renderPriceSource();});
+  document.querySelector('.use-zip-tax').onclick=()=>{if(taxState.data){taxEdited=false;taxState.status='loaded';details.taxMode='percent';details.tax=null;applyZipTaxDefault();syncTaxInput();refreshPriceEstimate();renderDataSources();}else startTaxLookup(selectedZip);};
+  document.querySelector('#insurance').oninput=e=>{insuranceMode='manual';details.insurance=e.target.value!==''&&e.target.validity.valid?+e.target.value:0;renderInsuranceSource();refreshPriceEstimate();};
+  document.querySelector('#dwellingCoverage').oninput=e=>{details.dwellingCoverage=+e.target.value;if(insuranceMode==='estimate')applyInsuranceEstimate();renderInsuranceSource();refreshPriceEstimate();};
+  document.querySelector('.use-insurance-estimate').onclick=()=>{insuranceMode='estimate';if(insuranceState.data){applyInsuranceEstimate();renderInsuranceSource();refreshPriceEstimate();}else startInsurance();};
+  ['hoa','extra','appreciation'].forEach(id=>document.querySelector('#'+id).oninput=e=>{details[id]=+e.target.value;refreshPriceEstimate();renderPriceSource();});
   document.querySelector('#price').oninput=e=>{setPriceControls(+e.target.value);markPriceEdited();};
   document.querySelector('#priceAmount').oninput=e=>{
     markPriceEdited();
@@ -139,6 +152,9 @@ function bind(){
   document.querySelector('.save-btn').onclick=()=>{const b=document.querySelector('.save-btn'); b.innerHTML='Saved ✓'; setTimeout(()=>b.innerHTML='Save my scenario <span>↗</span>',1800)};
   renderPriceSource();
   renderDataSources();
+  renderInsuranceSource();
+  bindEquityChart(details);
+  renderDistribution();
 }
 function openCalculator(zip,useMedian=false){
   homeValueRequest++;
@@ -151,6 +167,8 @@ function openCalculator(zip,useMedian=false){
   document.querySelector('.overlay').classList.add('open');
   document.querySelector('.close-modal').focus();
   const needsMedian=useMedian||homeValue.zip!==zip||['idle','loading','cancelled','error'].includes(homeValue.status);
+  if(useMedian||distributionState.selectedZip!==zip)startDistribution(zip);
+  if(insuranceMode==='estimate'){applyInsuranceEstimate();renderInsuranceSource();}
   if(useMedian||taxState.zip!==zip||['idle','error'].includes(taxState.status))startTaxLookup(zip);
   if(!needsMedian){renderPriceSource();return;}
   startMedianLookup(zip,true);
@@ -163,17 +181,23 @@ function startMedianLookup(zip,requireOpen=false){
   document.querySelector('#priceAmount').defaultValue='';
   document.querySelector('#priceOut').textContent='Loading…';
   renderPriceSource();
-  getZipHomeValue(zip).then(data=>{
+  getZipHomeValue(zip).then(async data=>{
+    if(!data)data=(await nearbyDefaults(zip,selectedState)).home;
     if(requestId!==homeValueRequest||zip!==selectedZip||(requireOpen&&!document.querySelector('.calc-modal').classList.contains('open')))return;
     homeValue={status:priceEdited?'manual':data?'loaded':'unavailable',zip,data};
+    applyZipTaxDefault();
     if(data&&!priceEdited)setPriceControls(data.value);
     if(!data&&!priceEdited)document.querySelector('#priceOut').textContent='Enter home price';
     renderPriceSource();
-  }).catch(()=>{
+    renderDataSources();
+  }).catch(async()=>{
+    let data;try{data=(await nearbyDefaults(zip,selectedState)).home;}catch{data=regionalDefaults(zip,selectedState).home;}
     if(requestId!==homeValueRequest||zip!==selectedZip||(requireOpen&&!document.querySelector('.calc-modal').classList.contains('open')))return;
-    homeValue={status:priceEdited?'manual':'error',zip,data:null};
-    if(!priceEdited)document.querySelector('#priceOut').textContent='Enter home price';
+    homeValue={status:priceEdited?'manual':'loaded',zip,data};
+    applyZipTaxDefault();
+    if(!priceEdited)setPriceControls(data.value);
     renderPriceSource();
+    renderDataSources();
   });
 }
 function closeAll(){
@@ -192,8 +216,10 @@ function setPriceControls(value){
   document.querySelector('#priceAmount').value=value;
   document.querySelector('#priceAmount').defaultValue=value;
   details.price=value;
+  applyZipTaxDefault();
   updateOutput();
   refreshPriceEstimate();
+  renderDataSources();
 }
 function bindComparisons(){document.querySelectorAll('[data-compare]').forEach(b=>b.onclick=()=>{selectTerm(+b.dataset.compare);app();setTimeout(()=>document.querySelector('.data-drawer').classList.add('open'),20);});}
 function refreshPriceEstimate(){
@@ -209,6 +235,8 @@ function refreshPriceEstimate(){
   document.querySelector('.scenario strong').innerHTML=`${money(details.price)} home · ${details.down}% down<br>${details.term}-year fixed at ${details.rate}%`;
   document.querySelector('.drawer-stat strong').textContent=money(p.total);
   document.querySelector('#chart').innerHTML=chartSvg();
+  bindEquityChart(details);
+  renderTaxPayment();
   document.querySelector('.compare').innerHTML=`<h3>Compare loan terms</h3>${[15,20,30].map(term=>compareRow(term)).join('')}`;
   bindComparisons();
   renderPriceSource();
@@ -219,22 +247,32 @@ function renderPriceSource(){
   const input=document.querySelector('#priceAmount'),hasPrice=Boolean(input.value)&&input.validity.valid;
   const hasTax=document.querySelector('#tax').value!==''&&document.querySelector('#tax').validity.valid;
   const hasRate=rateMode==='manual'||Boolean(rates.data);
-  const ready=hasPrice&&hasTax&&hasRate;
+  const insuranceInput=document.querySelector('#insurance');
+  const hasInsurance=insuranceInput.value!==''&&insuranceInput.validity.valid;
+  const ready=hasPrice&&hasTax&&hasRate&&hasInsurance;
   document.querySelector('.calculate').disabled=!ready;
   document.querySelector('#price').disabled=!hasPrice;
   document.querySelector('.details-btn').disabled=!ready;
   document.querySelector('.payment-bar').style.visibility=ready?'visible':'hidden';
   const summary=document.querySelector('.price-summary');
+  document.querySelector('.price-field').classList.toggle('default-estimate',Boolean(homeValue.data?.fallback)&&!priceEdited);
+  summary.classList.toggle('default-estimate',Boolean(homeValue.data?.fallback)&&!priceEdited);
   summary.textContent=homeValue.status==='loading'?`Loading the median home value for ZIP ${homeValue.zip}…`:homeValue.status==='loaded'?`ZIP median home value · Census ACS ${homeValue.data.period}`:homeValue.status==='manual'?'Your entered home price':homeValue.status==='unavailable'?`ZIP ${homeValue.zip} has no reported median. Enter your home price.`:homeValue.status==='error'?'The ZIP median could not load. Open the editor to retry or enter a home price.':homeValue.status==='cancelled'?'Open the editor to finish loading the ZIP median.':'Choose a ZIP to start with its median home value.';
+  if(homeValue.data?.fallback&&!priceEdited)summary.textContent=`${fallbackLabel(homeValue.data)} · Default home price`;
   if(!ready){
     if(!hasPrice&&homeValue.status!=='loading')document.querySelector('#priceOut').textContent='Enter home price';
     document.querySelector('.total strong').textContent='—';
     document.querySelectorAll('.legend strong').forEach(el=>el.textContent='—');
-    document.querySelector('.scenario strong').textContent=!hasPrice?(homeValue.status==='loading'?'Loading ZIP median…':`Enter a home price for ZIP ${selectedZip}`):!hasTax?(taxState.status==='loading'?'Loading ZIP tax median…':'Enter an annual property-tax estimate.'):rates.status==='loading'?'Loading weekly rates…':'Enter a lender rate in the editor.';
+    document.querySelector('.scenario strong').textContent=!hasPrice?(homeValue.status==='loading'?'Loading ZIP median…':`Enter a home price for ZIP ${selectedZip}`):!hasTax?(taxState.status==='loading'?'Loading ZIP tax estimate…':'Enter a property-tax estimate.'):!hasRate?(rates.status==='loading'?'Loading weekly rates…':'Enter a lender rate in the editor.'):insuranceState.status==='loading'?'Loading insurance benchmarks…':'Enter an insurance premium.';
   }
   if(homeValue.status==='loading'){note.textContent=`Finding the median home value for ZIP ${homeValue.zip}…`;return;}
   if(homeValue.data){
     const data=homeValue.data;
+    if(data.fallback){
+      note.textContent=`${priceEdited?'Using your entered price. ':''}No reported home median for ZIP ${selectedZip}, or its data could not load. Default ${money(data.value)}${data.atLeast?'+':data.atMost?' or less':''} from ${fallbackLabel(data)}.${data.atLeast||data.atMost?' Census reports a bound; adjust for your home.':''} `;
+      const source=document.createElement('a');source.href=data.sourceUrl;source.target='_blank';source.rel='noopener noreferrer';source.textContent='Census ACS '+data.period;note.append(source);
+      return;
+    }
     const amount=`${money(data.value)}${data.atLeast?'+':data.atMost?' or less':''}`;
     const description=`ZIP ${homeValue.zip} median home value: ${amount}`;
     note.textContent=`${homeValue.status==='manual'?'Using your entered price. ':''}${description}. `;
@@ -248,7 +286,7 @@ function renderPriceSource(){
   note.textContent=homeValue.status==='manual'?'Using your entered home price.':homeValue.status==='error'?`Could not load the median for ZIP ${homeValue.zip}. Enter your home price, or reopen the editor to retry.`:homeValue.status==='unavailable'?`No median home value available for ZIP ${homeValue.zip}. Enter your home price.`:homeValue.status==='cancelled'?'The ZIP median has not loaded yet. Reopen the calculator to load it.':'Choose a ZIP to start with its median home value.';
 }
 function updateOutput(){const price=+document.querySelector('#price').value, down=+document.querySelector('#down').value, rate=+document.querySelector('#rate').value; document.querySelector('#priceOut').textContent=money(price); document.querySelector('#downOut').textContent=`${down}% · ${money(price*down/100)}`; document.querySelector('#rateOut').textContent=`${rate.toFixed(2)}%`;}
-function readDetails(){ details.price=+document.querySelector('#priceAmount').value; ['down','rate','insurance','hoa','extra'].forEach(key => { details[key]=+document.querySelector(`#${key}`).value; });details[details.taxMode==='annual'?'annualTax':'tax']=+document.querySelector('#tax').value; }
+function readDetails(){ details.price=+document.querySelector('#priceAmount').value; ['down','rate','insurance','hoa','extra','appreciation','dwellingCoverage'].forEach(key => { details[key]=+document.querySelector(`#${key}`).value; });details[details.taxMode==='annual'?'annualTax':'tax']=+document.querySelector('#tax').value; }
 
 function syncTaxInput(){
   const annual=details.taxMode==='annual',input=document.querySelector('#tax');
@@ -257,20 +295,37 @@ function syncTaxInput(){
   input.placeholder=annual?'Enter annual tax':'Enter tax percentage';
   document.querySelector('#taxMode').value=details.taxMode;
   document.querySelector('.tax-prefix').textContent=annual?'$':'';
-  document.querySelector('.tax-unit').textContent=annual?'/ yr':'% / yr';
+  document.querySelector('.tax-unit').textContent=annual?'/ yr':'% of price / yr';
+}
+function applyZipTaxDefault(){
+  if(taxEdited||taxState.zip!==selectedZip||homeValue.zip!==selectedZip)return;
+  const rate=estimateTaxPercent(taxState.data,homeValue.data);
+  if(rate===null)return;
+  details.annualTax=taxState.data.annualTax;
+  if(details.taxMode==='percent')details.tax=rate;
+  syncTaxInput();
+}
+function renderTaxPayment(){
+  const tax=document.querySelector('#tax'),note=document.querySelector('.tax-payment-note');
+  if(tax.value===''||!tax.validity.valid){note.textContent='';return;}
+  const annual=details.taxMode==='annual'?details.annualTax:details.price*details.tax/100;
+  note.textContent=`${money(annual)} / year · ${money(annual/12)} / month${details.taxMode==='percent'?' · Scales with your home price':''}`;
 }
 function startTaxLookup(zip){
   const request=++taxRequest;taxEdited=false;taxState={status:'loading',zip,data:null};
-  details.taxMode='annual';details.annualTax=null;syncTaxInput();renderDataSources();renderPriceSource();
-  getZipPropertyTax(zip).then(data=>{
+  details.taxMode='percent';details.tax=null;details.annualTax=null;syncTaxInput();renderDataSources();renderPriceSource();
+  getZipPropertyTax(zip).then(async data=>{
+    if(!data)data=(await nearbyDefaults(zip,selectedState)).tax;
     if(request!==taxRequest||zip!==selectedZip)return;
     taxState={status:taxEdited?'manual':data?'loaded':'unavailable',zip,data};
-    if(data&&!taxEdited){details.annualTax=data.annualTax;syncTaxInput();}
+    if(data&&!taxEdited){details.annualTax=data.annualTax;applyZipTaxDefault();syncTaxInput();}
     refreshPriceEstimate();renderDataSources();
-  }).catch(()=>{
+  }).catch(async()=>{
+    let data;try{data=(await nearbyDefaults(zip,selectedState)).tax;}catch{data=regionalDefaults(zip,selectedState).tax;}
     if(request!==taxRequest||zip!==selectedZip)return;
-    taxState={status:taxEdited?'manual':'error',zip,data:null};
-    renderDataSources();renderPriceSource();
+    taxState={status:taxEdited?'manual':'loaded',zip,data};
+    if(!taxEdited){details.annualTax=data.annualTax;applyZipTaxDefault();syncTaxInput();}
+    refreshPriceEstimate();renderDataSources();
   });
 }
 async function startRates(){
@@ -302,16 +357,58 @@ function renderDataSources(){
     if(rateMode==='benchmark')document.querySelector('#rateOut').textContent=rates.status==='loading'?'Loading…':'Set your rate';
   }
   document.querySelector('.use-zip-tax').disabled=taxState.status==='loading';
+  document.querySelector('.tax-field').classList.toggle('default-estimate',Boolean(taxState.data?.fallback||homeValue.data?.fallback)&&!taxEdited);
   if(taxState.data){
     const data=taxState.data,amount=`${money(data.annualTax)}${data.atLeast?'+':data.atMost?' or less':''}`;
-    taxNote.innerHTML=`${taxEdited?'Using your entered tax. ':''}ZIP ${data.zip} median annual tax: ${amount}. <a href="${data.sourceUrl}" target="_blank" rel="noopener noreferrer">Census ACS ${data.period}</a> · Historical tax paid by owners, not a tax rate or a specific home's bill.${data.atLeast||data.atMost?` Census reports a ${data.atLeast?'lower':'upper'} bound; adjust for your home.`:''}`;
-  }else taxNote.textContent=taxState.status==='loading'?`Loading annual property taxes for ZIP ${selectedZip}…`:taxState.status==='error'?`${taxEdited?'Using your entered tax. ':''}ZIP tax data could not load. Enter an annual bill, or use ZIP median to retry.`:`${taxEdited?'Using your entered tax. ':''}No reported tax median for ZIP ${selectedZip}. Enter your annual bill or estimate.`;
+    const home=homeValue.zip===selectedZip?homeValue.data:null;
+    const ratio=estimateTaxPercent(data,home);
+    const method=details.taxMode==='percent'?ratio===null?'No ZIP home-value median is available to derive a percentage. Enter a rate or switch to an annual bill.':`ZIP tax-to-value proxy: ${ratio}%, calculated from median annual tax ÷ median home value. This is an estimate, not an assessed tax rate.`:'Using an annual amount that stays fixed when you edit the home price.';
+    taxNote.innerHTML=`${taxEdited?'Using your entered tax. ':''}${data.fallback?`${fallbackLabel(data)} · Default tax estimate. `:home?.fallback?'The home-value denominator uses an area default. ':''}${method} ${data.fallback?'Source-area':'ZIP '+data.zip} median annual tax: ${amount}. <a href="${data.sourceUrl}" target="_blank" rel="noopener noreferrer">Census ACS ${data.period}</a>${data.atLeast||data.atMost||home?.atLeast||home?.atMost?' · One or both Census medians are capped; the proxy is approximate.':''}`;
+  }else taxNote.textContent=taxState.status==='loading'?`Loading property taxes for ZIP ${selectedZip}…`:taxState.status==='error'?`${taxEdited?'Using your entered tax. ':''}ZIP tax data could not load. Enter a tax percentage or annual bill, or use ZIP tax estimate to retry.`:`${taxEdited?'Using your entered tax. ':''}No reported tax median for ZIP ${selectedZip}. Enter a tax percentage or annual bill.`;
   const rateSummary=rates.data?`${rateMode==='manual'?'Your rate':details.term===20?'30-year rate proxy':'Weekly rate benchmark'} · ${displayDate(rates.data.series[30].at(-1)[0])}${isRateStale(rates.data)?' (older data)':''}`:rateMode==='manual'?'Your entered rate':rates.status==='loading'?'Loading weekly rates':'Rate data unavailable';
-  const taxSummary=taxEdited?'Your entered property tax':taxState.data?`ZIP tax median${taxState.data.atLeast?' (lower bound)':taxState.data.atMost?' (upper bound)':''} · Census ACS ${taxState.data.period}`:taxState.status==='loading'?'Loading ZIP taxes':'Enter property tax';
+  const taxSummary=taxEdited?'Your entered property tax':taxState.data?`ZIP ${details.taxMode==='percent'?'tax-to-value proxy':'tax median'} · Census ACS ${taxState.data.period}`:taxState.status==='loading'?'Loading ZIP taxes':'Enter property tax';
   document.querySelector('.estimate-assumptions').textContent=`${rateSummary}. ${taxSummary}. Adjust for your lender and property.`;
+  renderTaxPayment();
   document.querySelector('.rate-modal')?.dispatchEvent(new Event('rates-changed'));
+}
+function fallbackLabel(data){return data.fallback==='nearby'?`Nearby ZIP ${data.sourceZip} (${data.distanceMiles.toFixed(1)} miles away)`:`${data.sourceArea} ${data.fallback} median`;}
+
+async function startInsurance(){
+  insuranceState.status='loading';renderInsuranceSource();
+  try{insuranceState={status:'loaded',data:await getInsuranceBenchmarks()};if(insuranceMode==='estimate')applyInsuranceEstimate();}
+  catch{insuranceState.status='error';}
+  renderInsuranceSource();refreshPriceEstimate();
+}
+function applyInsuranceEstimate(){
+  if(insuranceMode!=='estimate')return;
+  const estimate=insuranceState.data?estimateInsurance(insuranceState.data,selectedState,details.dwellingCoverage):null;
+  const input=document.querySelector('#insurance');
+  details.insurance=estimate?.monthly??0;
+  input.value=estimate?.monthly??'';input.defaultValue=estimate?.monthly??'';
+}
+function renderInsuranceSource(){
+  const note=document.querySelector('.insurance-source');
+  document.querySelector('#dwellingCoverage').required=insuranceMode==='estimate';
+  const button=document.querySelector('.use-insurance-estimate');button.disabled=insuranceState.status==='loading';
+  if(!insuranceState.data){note.textContent=insuranceMode==='manual'?'Using your entered monthly insurance premium.':insuranceState.status==='loading'?'Loading state insurance benchmarks…':'Insurance benchmarks could not load. Enter a monthly quote or use state estimate to retry.';return;}
+  const data=insuranceState.data,estimate=estimateInsurance(data,selectedState,details.dwellingCoverage);
+  const description=insuranceMode==='manual'?'Using your entered monthly premium.':estimate?`${stateNames[selectedState]} estimate for ${money(details.dwellingCoverage)} dwelling rebuild coverage: ${money(estimate.annual)} / year.`:'No estimate is available outside $200,000–$800,000 rebuild coverage. Enter a monthly insurer quote or a supported coverage amount.';
+  note.innerHTML=`${description} <a href="${data.source.url}" target="_blank" rel="noopener noreferrer">NerdWallet / Quadrant</a> · ${displayDate(data.source.updatedDate)}. State benchmark at $400,000 coverage, adjusted with the national coverage-cost curve. Assumes good credit and a $1,000 deductible; this is a planning estimate, not a quote. <a href="${data.source.rebuildSourceUrl}" target="_blank" rel="noopener noreferrer">Use rebuilding cost, excluding land</a>. Flood/earthquake and separate wind coverage are extra.${selectedState==='HI'?' Hawaii’s benchmark excludes hurricane wind coverage.':''}`;
+}
+function renderDistribution(){renderPriceDistribution(document.querySelector('.price-distribution'),distributionState,()=>startDistribution(selectedZip));}
+async function startDistribution(zip){
+  const request=++distributionRequest;distributionState={status:'loading',selectedZip:zip,data:null};renderDistribution();
+  try{
+    let data=await getPriceDistribution(zip);
+    if(!data){const fallback=await nearbyDefaults(zip,selectedState);if(fallback.home.sourceZip)data=await getPriceDistribution(fallback.home.sourceZip);}
+    if(request!==distributionRequest||zip!==selectedZip)return;
+    distributionState={status:data?'loaded':'unavailable',selectedZip:zip,data};
+  }catch{if(request!==distributionRequest||zip!==selectedZip)return;distributionState={status:'error',selectedZip:zip,data:null};}
+  renderDistribution();
 }
 app();
 startMedianLookup(selectedZip);
 startTaxLookup(selectedZip);
 startRates();
+startInsurance();
+startDistribution(selectedZip);

@@ -27,12 +27,45 @@ function zoom(view,factor,limits,maxZoom=12){
   return [Math.max(limits[0],Math.min(limits[0]+limits[2]-width,view[0]+(view[2]-width)/2)),Math.max(limits[1],Math.min(limits[1]+limits[3]-height,view[1]+(view[3]-height)/2)),width,height];
 }
 
-function pan(svg,getView,setView){
-  let start;
-  svg.addEventListener('pointerdown',e=>{if(e.button!==0)return;const view=getView();start={x:e.clientX,y:e.clientY,view:[...view],drag:false};});
-  svg.addEventListener('pointermove',e=>{if(!start||!(e.buttons&1))return;const dx=e.clientX-start.x,dy=e.clientY-start.y;if(Math.hypot(dx,dy)<5&&!start.drag)return;start.drag=true;svg.setPointerCapture(e.pointerId);const box=svg.getBoundingClientRect();const scale=Math.min(box.width/start.view[2],box.height/start.view[3]);setView([start.view[0]-dx/scale,start.view[1]-dy/scale,start.view[2],start.view[3]]);});
-  svg.addEventListener('pointerup',()=>{if(start?.drag){svg.dataset.dragged='true';setTimeout(()=>delete svg.dataset.dragged,0);}start=null;});
-  svg.addEventListener('pointercancel',()=>{start=null;});
+function pan(svg,getView,setView,limits=nationView,maxZoom=12){
+  const pointers=new Map();let start=null,pinch=null,dragged=false,resetTimer;
+  const midpoint=()=>{const [a,b]=[...pointers.values()];return {x:(a.x+b.x)/2,y:(a.y+b.y)/2,distance:Math.hypot(a.x-b.x,a.y-b.y)};};
+  const coordinates=(point,view)=>{
+    const box=svg.getBoundingClientRect(),scale=Math.min(box.width/view[2],box.height/view[3]);
+    return [view[0]+(point.x-box.left-(box.width-view[2]*scale)/2)/scale,view[1]+(point.y-box.top-(box.height-view[3]*scale)/2)/scale];
+  };
+  const begin=()=>{
+    if(pointers.size>=2){const mid=midpoint(),view=[...getView()];pinch={...mid,view,anchor:coordinates(mid,view)};start=null;dragged=true;svg.dataset.dragged='true';}
+    else if(pointers.size===1){const point=[...pointers.values()][0];start={...point,view:[...getView()]};pinch=null;}
+  };
+  svg.addEventListener('pointerdown',e=>{
+    if(e.button!==0)return;
+    clearTimeout(resetTimer);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});begin();
+    if(pointers.size>=2)for(const id of pointers.keys())svg.setPointerCapture(id);
+  });
+  svg.addEventListener('pointermove',e=>{
+    if(!pointers.has(e.pointerId))return;
+    if(e.pointerType==='mouse'&&!(e.buttons&1)){end(e);return;}
+    pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pinch&&pointers.size>=2){
+      const mid=midpoint();if(pinch.distance<2||mid.distance<2)return;
+      const width=Math.max(limits[2]/maxZoom,Math.min(limits[2],pinch.view[2]*pinch.distance/mid.distance));
+      const height=width*limits[3]/limits[2],box=svg.getBoundingClientRect(),scale=Math.min(box.width/width,box.height/height);
+      setView([pinch.anchor[0]-(mid.x-box.left-(box.width-width*scale)/2)/scale,pinch.anchor[1]-(mid.y-box.top-(box.height-height*scale)/2)/scale,width,height]);
+      return;
+    }
+    if(!start)return;
+    const dx=e.clientX-start.x,dy=e.clientY-start.y;if(Math.hypot(dx,dy)<5&&!dragged)return;
+    dragged=true;svg.dataset.dragged='true';svg.setPointerCapture(e.pointerId);
+    const box=svg.getBoundingClientRect(),scale=Math.min(box.width/start.view[2],box.height/start.view[3]);
+    setView([start.view[0]-dx/scale,start.view[1]-dy/scale,start.view[2],start.view[3]]);
+  });
+  const end=e=>{
+    pointers.delete(e.pointerId);if(svg.hasPointerCapture(e.pointerId))svg.releasePointerCapture(e.pointerId);
+    if(pointers.size){begin();return;}
+    start=null;pinch=null;dragged=false;resetTimer=setTimeout(()=>delete svg.dataset.dragged,0);
+  };
+  svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end);
 }
 
 export function bindMap(selectZip){
@@ -92,7 +125,7 @@ export async function openState(code){
   document.querySelector('#zip-search').value='';
   document.querySelector('.state-map-stage').innerHTML=`<svg class="selected-state-map" viewBox="0 0 960 600" aria-label="${region.name} ZIP areas"><path class="detail-land" d="${region.detailPath}"/><g class="zip-areas"></g><g class="zip-labels"></g><path class="state-border" d="${region.detailPath}"/></svg><div class="boundary-status" role="status">Loading ZIP area outlines…</div><div class="area-tooltip" role="status"></div>`;
   const svg=document.querySelector('.selected-state-map');
-  pan(svg,()=>detailView,view=>{detailView=view;updateDetail();});
+  pan(svg,()=>detailView,view=>{detailView=view;updateDetail();},[0,0,960,600],480);
   svg.addEventListener('click',e=>{
     if(svg.dataset.dragged)return;
     const target=e.target.closest('.zip-area');if(target)onZip(currentRegion.code,target.dataset.zip);

@@ -76,6 +76,36 @@
 .details-btn:disabled{opacity:.55;cursor:default}
 .estimate-assumptions{margin:8px 0 0;font-size:11px;line-height:1.5;color:#6c7e6f}
 .calc-modal .calc-assumptions{margin:14px 0 0;font-size:12px;line-height:1.5;color:#65726d}
+.tax-payment-note{font-size:11px;color:#455c4c;margin:8px 0 0}
+.price-field.default-estimate #priceAmount,.price-field.default-estimate #priceOut,.tax-field.default-estimate #tax,.price-summary.default-estimate,.source-note.default-estimate{font-style:italic}
+.insurance-field{padding:16px 0;margin:18px 0;border-top:1px solid #e0e1d9;border-bottom:1px solid #e0e1d9}
+.insurance-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:600}
+.use-insurance-estimate,.retry-distribution{border:0;background:transparent;padding:4px 0;color:#6554b4;font:600 11px 'DM Sans',sans-serif}
+.use-insurance-estimate:disabled{opacity:.5;cursor:default}
+.insurance-field .input-grid{margin-top:12px}
+.insurance-field .input-grid span{min-width:0}
+.insurance-field .input-grid input{flex:1;width:80px;min-width:0}
+.equity-interactive{position:relative}
+#chart [hidden]{display:none}
+.equity-svg{display:block;touch-action:pan-y}
+button,.zip-result{touch-action:manipulation}
+.equity-grid{stroke:#e0dfd8;stroke-width:1}
+.equity-axis text{fill:#82908a;font:10px 'DM Sans',sans-serif}
+.equity-marker,.equity-selected{fill:#7364d9;stroke:#fff;stroke-width:2}
+.equity-point{cursor:pointer;outline:none}.equity-point:focus-visible .equity-marker,.equity-point:hover .equity-marker{fill:#18372f;stroke:#b4a7f8;stroke-width:4}
+.equity-guide{stroke:#aaa2c0;stroke-dasharray:4 4}
+.equity-tooltip{position:absolute;top:9px;z-index:2;min-width:155px;padding:11px 13px;border:1px solid #d9d1ec;border-radius:9px;background:#fffffff5;box-shadow:0 6px 18px #26383117;pointer-events:none;color:#455c4c;font-size:10px}
+.equity-tooltip strong{display:block;color:#6554b4;margin-bottom:7px;font-size:12px}
+.equity-tooltip span{display:flex;justify-content:space-between;gap:12px;margin-top:4px}.equity-tooltip b{color:#244c3b}
+.equity-readout{font-size:11px;color:#455c4c;line-height:1.6;margin:6px 0}
+.equity-help{font-size:10px;line-height:1.5;color:#7a847b;margin:7px 0 13px}
+.equity-explore{display:block;font-size:10px;color:#6c7e6f}.equity-explore input{display:block;width:100%;accent-color:#7966d2;margin:8px 0}
+.price-distribution{padding:14px;background:#f0eee7;border:1px solid #e0dfd8;border-radius:10px}
+.distribution-title{font-size:12px;color:#455c4c}
+.distribution-chart{width:100%;display:block;margin-top:10px}
+.distribution-chart text{fill:#6c7e6f;font:9px 'DM Sans',sans-serif}
+.distribution-bar{fill:#a69adb}.distribution-bin{cursor:pointer;outline:none}.distribution-bin:hover .distribution-bar,.distribution-bin:focus-visible .distribution-bar{fill:#6554b4}
+.distribution-readout{margin:3px 0;font-size:11px;color:#455c4c;line-height:1.5;min-height:30px}
 
 .source-note{margin:9px 0 0;color:#6c7e6f;font-size:11px;line-height:1.55}
 .source-note a,.rate-provenance a{color:#6554b4;text-underline-offset:2px}

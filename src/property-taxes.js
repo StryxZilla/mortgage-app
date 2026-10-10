@@ -1,5 +1,13 @@
 let datasetPromise;
 
+// Ratio of ZIP medians is a useful price-scaling proxy, not an assessed rate.
+export function estimateTaxPercent(tax, homeValue) {
+  if (tax?.fallback && Number.isFinite(tax.proxyRate) && tax.proxyRate >= 0) return tax.proxyRate;
+  if (!tax || !homeValue || tax.zip !== homeValue.zip || !(homeValue.value > 0) ||
+      !Number.isFinite(tax.annualTax) || tax.annualTax < 0) return null;
+  return +(tax.annualTax / homeValue.value * 100).toFixed(4);
+}
+
 export function lookupPropertyTax(data, zip) {
   if (!/^\d{5}$/.test(zip) || !Object.hasOwn(data.values, zip)) return null;
   const sourceUrl = new URL(data.source.url);
