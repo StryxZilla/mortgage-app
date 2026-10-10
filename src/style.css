@@ -72,3 +72,5 @@
 .price-source{margin:9px 0 0;color:#6c7e6f;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 .price-source a{color:#6554b4;text-underline-offset:2px}
 .calculate:disabled{opacity:.55;cursor:wait}
+.price-summary{margin:10px 0 0;font-size:11px;line-height:1.5;color:#6c7e6f}
+.details-btn:disabled{opacity:.55;cursor:default}

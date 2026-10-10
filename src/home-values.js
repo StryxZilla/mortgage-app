@@ -36,7 +36,7 @@ export function lookupHomeValue(data, zip) {
 export async function getZipHomeValue(zip) {
   if (typeof zip !== 'string' || !/^\d{5}$/.test(zip)) return null;
   if (!datasetPromise) {
-    datasetPromise = fetch(new URL('./zip-home-values.json?v=home-values-1', import.meta.url))
+    datasetPromise = fetch(new URL('./zip-home-values.json?v=home-values-2', import.meta.url), { cache: 'no-cache' })
       .then(response => {
         if (!response.ok) throw new Error(`ZIP home values failed to load (HTTP ${response.status}).`);
         return response.json();
