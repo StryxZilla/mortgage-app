@@ -42,3 +42,13 @@ input with `node scripts/project-city-geometries.mjs RAW.json PROJECTED.json`,
 then run `python scripts/generate-city-shortcuts.py PROJECTED.json` in an
 environment with Shapely. The website needs no new runtime dependencies or
 external requests for these shortcuts.
+
+When a city is selected, mapped ZIP areas use fixed median home-value bands
+from the same Census ACS 2020–2024 B25077 snapshot as the calculator. The
+legend shows the bands and period; hover and accessible ZIP labels show
+exact medians, including Census upper/lower bounds. Missing medians are
+gray rather than filled with fallback estimates. These are five-year
+owner-occupied home-value estimates, not current listing or sale prices.
+Surrounding ZIPs retain their price colors at reduced opacity. Closing the
+mortgage editor returns to the state explorer with its city, search and
+zoom preserved, including after calculating and reopening the editor.

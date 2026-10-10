@@ -1,6 +1,6 @@
 import { calculateMortgage } from './mortgage.js';
 import { mapStates } from './us-map.js?v=maps-3';
-import { mapMarkup, bindMap, closeStateMap, zipCount } from './map-ui.js?v=cities-1';
+import { mapMarkup, bindMap, closeStateMap, resumeStateMap, zipCount } from './map-ui.js?v=price-map-1';
 import { getZipHomeValue } from './home-values.js?v=home-values-2';
 import { getZipPropertyTax, estimateTaxPercent } from './property-taxes.js?v=estimates-1';
 import { getInsuranceBenchmarks, estimateInsurance } from './insurance.js';
@@ -83,7 +83,7 @@ function app() {
       <p class="state-instructions">Select an outlined ZIP area, or search by city or ZIP code.</p>
       <div class="city-shortcuts" role="group" aria-label="City shortcuts"></div>
       <div class="state-explorer">
-        <div class="state-map-card"><div class="state-map-stage"></div><div class="state-map-controls"><button aria-label="Zoom into state">+</button><button aria-label="Zoom out of state">−</button><button aria-label="Reset state map">⌂</button></div><p class="state-map-hint"><span class="city-map-key" aria-hidden="true"></span> Purple ZIPs overlap shortcut cities. Pinch to zoom; drag to pan.</p></div>
+        <div class="state-map-card"><div class="state-map-stage"></div><div class="price-map-legend" role="status" hidden></div><div class="state-map-controls"><button aria-label="Zoom into state">+</button><button aria-label="Zoom out of state">−</button><button aria-label="Reset state map">⌂</button></div><p class="state-map-hint"><span class="city-map-key" aria-hidden="true"></span> Purple ZIPs overlap shortcut cities. Pinch to zoom; drag to pan.</p></div>
         <div class="zip-browser"><label for="zip-search">Find your ZIP code</label><input id="zip-search" type="search" placeholder="City or ZIP code" autocomplete="off"><p class="zip-result-count" role="status"></p><div class="zip-results"></div><p class="zip-source-note">Census ZIP areas (2010). Postal ZIPs without mapped areas remain searchable.</p></div>
       </div>
     </div>
@@ -117,7 +117,7 @@ function bind(){
   document.querySelector('.close-panel').onclick=closeAll; document.querySelector('.overlay').onclick=closeAll;
   document.querySelector('.close-modal').onclick=closeAll; document.querySelector('.edit').onclick=()=>openCalculator(selectedZip);
   document.querySelector('.calc-modal').onkeydown=e=>{
-    if(e.key==='Escape'){closeAll();return;}
+    if(e.key==='Escape'){e.stopPropagation();closeAll();return;}
     if(e.key==='Tab'){
       const controls=[...document.querySelectorAll('.calc-modal button,.calc-modal input,.calc-modal select,.calc-modal a[href]')].filter(el=>!el.disabled);
       if(e.shiftKey&&document.activeElement===controls[0]){e.preventDefault();controls.at(-1).focus();}
@@ -210,6 +210,11 @@ function startMedianLookup(zip,requireOpen=false){
 function closeAll(){
   homeValueRequest++;
   if(homeValue.status==='loading')homeValue.status='cancelled';
+  const modal=document.querySelector('.calc-modal');
+  if(modal.classList.contains('open')){
+    modal.classList.remove('open');modal.inert=true;
+    resumeStateMap(selectedState);renderPriceSource();return;
+  }
   document.querySelectorAll('.overlay,.zip-panel,.calc-modal').forEach(x=>x.classList.remove('open'));
   document.querySelector('.calc-modal').inert=true;
   closeStateMap();

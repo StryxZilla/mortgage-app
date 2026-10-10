@@ -1,6 +1,8 @@
 import { mapStates, projectStatePoint } from './us-map.js?v=maps-3';
 import { zipLocations } from './zip-data.js';
 import { stateCities } from './city-shortcuts.js';
+import { getZipHomeValue } from './home-values.js?v=home-values-2';
+import { priceBands, missingPriceColor, medianColor, medianLabel } from './price-map.js';
 
 export const zipCount = Object.values(zipLocations).reduce((n,rows)=>n+rows.length,0);
 const postalDirectory = new Map(Object.values(zipLocations).flat().map(row=>[row[0],row]));
@@ -11,7 +13,9 @@ let currentRegion, onZip, returnFocus, points = [], areas = [], areaByZip = new 
 let loadId=0, loading=false, loadError='';
 const boundaryCache=new Map();
 let resizeObserver;
-let selectedCity=null;
+let selectedCity=null, savedNavigation=null, zipReturnFocus=null;
+let priceMap=null, priceStatus='idle';
+const priceCache=new Map();
 const escape = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 export function mapMarkup(selectedCode){
@@ -96,7 +100,7 @@ export function bindMap(selectZip){
     const button=e.target.closest('[data-city]');if(!button||!currentRegion)return;
     selectedCity=(stateCities[currentRegion.code]||[]).find(city=>city.id===button.dataset.city)??null;
     document.querySelector('#zip-search').value=selectedCity?.name??'';
-    updateCitySelection();renderResults();fitSearch();updateDetail();
+    updateCitySelection();renderResults();fitSearch();updateDetail();refreshPriceMap();
   };
   document.querySelectorAll('.state-map-controls button').forEach((button,i)=>button.onclick=()=>{
     if(i===2){selectedCity=null;document.querySelector('#zip-search').value='';updateCitySelection();renderResults();}
@@ -125,17 +129,19 @@ async function loadBoundaries(code){
   return boundaryCache.get(code);
 }
 
-export async function openState(code){
+export async function openState(code, navigation=null){
   currentRegion=mapStates.find(s=>s.code===code);if(!currentRegion)return;
-  selectedCity=null;renderCityShortcuts();
+  selectedCity=navigation?(stateCities[code]||[]).find(city=>city.id===navigation.cityId)??null:null;
+  priceMap=null;priceStatus='idle';delete document.querySelector('.price-map-legend').dataset.priceMode;
+  renderCityShortcuts();updateCitySelection();
   const requestId=++loadId;
-  returnFocus=document.activeElement;
+  returnFocus=navigation?document.querySelector(`.geo-state[data-state="${code}"]`):document.activeElement;
   const region=currentRegion;
   points=(zipLocations[code]||[]).map(row=>{const [x,y]=projectStatePoint(region,row[2],row[3]);return {row,x,y};}).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
   areas=[];areaByZip=new Map();loading=true;loadError='';
-  detailView=[0,0,960,600];
+  detailView=navigation?[...navigation.view]:[0,0,960,600];
   document.querySelector('#state-title').textContent=region.name;
-  document.querySelector('#zip-search').value='';
+  document.querySelector('#zip-search').value=navigation?.query??'';
   document.querySelector('.state-map-stage').innerHTML=`<svg class="selected-state-map" viewBox="0 0 960 600" aria-label="${region.name} ZIP areas"><path class="detail-land" d="${region.detailPath}"/><g class="zip-areas"></g><g class="zip-labels"></g><path class="state-border" d="${region.detailPath}"/></svg><div class="boundary-status" role="status">Loading ZIP area outlines…</div><div class="area-tooltip" role="status"></div>`;
   const svg=document.querySelector('.selected-state-map');
   pan(svg,()=>detailView,view=>{detailView=view;updateDetail();},[0,0,960,600],480);
@@ -148,7 +154,7 @@ export async function openState(code){
     const path=e.target.closest('.zip-area');if(!path)return;
     const entry=points.find(p=>p.row[0]===path.dataset.zip);
     const cities=(stateCities[currentRegion.code]||[]).filter(city=>city.zips.includes(path.dataset.zip)).map(city=>city.name);
-    document.querySelector('.area-tooltip').textContent=`${path.dataset.zip}${entry?.row[1]&&entry.row[1]!=='ZIP area'?' · '+entry.row[1]:''}${cities.length?' · City view: '+cities.join(', '):''}`;
+    document.querySelector('.area-tooltip').textContent=`${path.dataset.zip}${entry?.row[1]&&entry.row[1]!=='ZIP area'?' · '+entry.row[1]:''}${selectedCity?' · Median home value: '+(priceStatus==='ready'?medianLabel(priceMap.get(path.dataset.zip)):priceStatus==='error'?'Data unavailable':'Loading…'):''}${cities.length?' · City view: '+cities.join(', '):''}`;
     document.querySelector('.area-tooltip').classList.add('visible');
   });
   svg.addEventListener('pointerleave',()=>document.querySelector('.area-tooltip').classList.remove('visible'));
@@ -157,8 +163,8 @@ export async function openState(code){
   document.querySelectorAll('header,main').forEach(el=>el.inert=true);
   const panel=document.querySelector('.zip-panel');panel.inert=false;panel.classList.add('open');
   document.querySelector('.overlay').classList.add('open');
-  renderResults();
-  document.querySelector('.close-panel').focus();
+  renderResults();updateDetail();
+  document.querySelector('.close-panel').focus({preventScroll:true});
   try{
     const data=await loadBoundaries(code);
     if(requestId!==loadId)return;
@@ -173,8 +179,8 @@ export async function openState(code){
     document.querySelector('.boundary-status').classList.add('hidden');
     renderResults();
     // A search entered during loading must fit the newly available area bounds.
-    if(document.querySelector('#zip-search').value.trim())fitSearch();
-    updateDetail();
+    if(document.querySelector('#zip-search').value.trim()&&(!navigation||document.querySelector('#zip-search').value!==navigation.query))fitSearch();
+    updateDetail();refreshPriceMap();
   }catch(error){
     if(requestId!==loadId)return;
     loading=false;loadError='ZIP outlines could not load. Close and reopen this state to retry.';
@@ -224,7 +230,22 @@ function renderAreaLabels(){
   svg.querySelectorAll('.zip-area').forEach(path=>{
     path.classList.toggle('muted',Boolean(query)&&!matching.has(path.dataset.zip));
     path.classList.toggle('matching',Boolean(query)&&matching.has(path.dataset.zip));
+    const priceMode=selectedCity?priceStatus:'off';
+    if(path.dataset.priceMode===priceMode)return;
+    path.dataset.priceMode=priceMode;
+    path.classList.toggle('price-colored',Boolean(selectedCity));
+    if(selectedCity){
+      const median=priceMap?.get(path.dataset.zip);
+      path.style.setProperty('--zip-price-color',priceStatus==='ready'?medianColor(median):missingPriceColor);
+      const label=priceStatus==='ready'?medianLabel(median):priceStatus==='error'?'Data unavailable':'Loading median';
+      path.setAttribute('aria-label',`Select ZIP ${path.dataset.zip} · Median home value: ${label}`);
+      path.querySelector('title').textContent=`ZIP ${path.dataset.zip} · Median home value: ${label}`;
+    }else{
+      path.setAttribute('aria-label',`Select ZIP ${path.dataset.zip}`);
+      path.querySelector('title').textContent=`ZIP ${path.dataset.zip}`;
+    }
   });
+  renderPriceLegend();
   const occupied=[];
   svg.querySelector('.zip-labels').innerHTML=areas.filter(area=>{
     if(query&&!matching.has(area.zip))return false;
@@ -236,10 +257,64 @@ function renderAreaLabels(){
   }).map(area=>`<text class="zip-area-label" x="${area.center[0]}" y="${area.center[1]}" style="font-size:${11/scale}px">${area.zip}</text>`).join('');
 }
 
-function updateDetail(){applyView(document.querySelector('.selected-state-map'),detailView);renderAreaLabels();}
+function updateDetail(){
+  applyView(document.querySelector('.selected-state-map'),detailView);renderAreaLabels();
+  savedNavigation={code:currentRegion.code,cityId:selectedCity?.id??null,query:document.querySelector('#zip-search').value,view:[...detailView]};
+}
+
+function renderPriceLegend(){
+  const legend=document.querySelector('.price-map-legend');
+  legend.hidden=!selectedCity;
+  const hint=document.querySelector('.state-map-hint');
+  const hintMarkup=selectedCity?'ZIP colors show median home values. Pinch to zoom; drag to pan.':'<span class="city-map-key" aria-hidden="true"></span> Purple ZIPs overlap shortcut cities. Pinch to zoom; drag to pan.';
+  if(hint.innerHTML!==hintMarkup)hint.innerHTML=hintMarkup;
+  const key=selectedCity?priceStatus:'off';
+  if(legend.dataset.priceMode===key)return;
+  legend.dataset.priceMode=key;
+  if(!selectedCity)return;
+  if(priceStatus!=='ready'){
+    legend.textContent=priceStatus==='error'?'Home-value colors could not load. Select a city again to retry.':'Loading ZIP median home values…';return;
+  }
+  const source=[...priceMap.values()].find(Boolean);
+  legend.innerHTML=`<div class="price-map-heading"><strong>Median home value</strong><span>Census ACS ${escape(source?.period??'2020–2024')}</span></div><div class="price-map-bands">${priceBands.map(band=>`<span><i style="background:${band.color}"></i>${band.label}</span>`).join('')}<span><i style="background:${missingPriceColor}"></i>No data</span></div>`;
+}
+
+async function refreshPriceMap(){
+  if(!selectedCity||loading||!areas.length||priceStatus==='loading')return;
+  if(priceStatus==='ready'){updateDetail();return;}
+  const region=currentRegion,svg=document.querySelector('.selected-state-map');
+  priceStatus='loading';updateDetail();
+  if(!priceCache.has(region.code)){
+    const zips=[...new Set([...points.map(point=>point.row[0]),...areas.map(area=>area.zip)])];
+    priceCache.set(region.code,Promise.all(zips.map(async zip=>[zip,await getZipHomeValue(zip)]))
+      .then(rows=>new Map(rows)).catch(error=>{priceCache.delete(region.code);throw error;}));
+  }
+  try{
+    const data=await priceCache.get(region.code);
+    if(currentRegion!==region||!svg.isConnected)return;
+    priceMap=data;priceStatus='ready';updateDetail();
+  }catch{
+    if(currentRegion!==region||!svg.isConnected)return;
+    priceStatus='error';updateDetail();
+  }
+}
+
+export function resumeStateMap(code){
+  const panel=document.querySelector('.zip-panel');
+  if(currentRegion?.code!==code||!document.querySelector('.selected-state-map')||loading||loadError){
+    openState(code,savedNavigation?.code===code?savedNavigation:null);return;
+  }
+  document.querySelectorAll('header,main').forEach(el=>el.inert=true);
+  panel.inert=false;panel.classList.add('open');
+  document.querySelector('.overlay').classList.add('open');
+  updateDetail();refreshPriceMap();
+  const focus=zipReturnFocus?.isConnected&&panel.contains(zipReturnFocus)?zipReturnFocus:document.querySelector('#zip-search');
+  focus.focus({preventScroll:true});zipReturnFocus=null;
+}
 
 export function closeStateMap(restoreFocus=true){
-  loadId++;
+  if(restoreFocus)loadId++;
+  else zipReturnFocus=document.activeElement;
   const panel=document.querySelector('.zip-panel');panel.classList.remove('open');panel.inert=true;
   if(restoreFocus){document.querySelectorAll('header,main').forEach(el=>el.inert=false);returnFocus?.focus();returnFocus=null;}
 }
