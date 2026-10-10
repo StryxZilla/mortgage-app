@@ -10,7 +10,9 @@ export function calculateMortgage(input) {
   const downAmount = input.price * input.down / 100;
   const principal = Math.max(0, input.price - downAmount);
   const principalAndInterest = monthlyPrincipalAndInterest(principal, input.rate, input.term);
-  const propertyTax = input.price * input.tax / 100 / 12;
+  const propertyTax = input.taxMode === 'annual'
+    ? Math.max(0, Number(input.annualTax) || 0) / 12
+    : input.price * input.tax / 100 / 12;
   const insurance = Number(input.insurance) || 0;
   const hoa = Number(input.hoa) || 0;
   const pmi = input.down < 20 ? principal * (Number(input.pmiRate) || 0.55) / 100 / 12 : 0;

@@ -76,3 +76,44 @@
 .details-btn:disabled{opacity:.55;cursor:default}
 .estimate-assumptions{margin:8px 0 0;font-size:11px;line-height:1.5;color:#6c7e6f}
 .calc-modal .calc-assumptions{margin:14px 0 0;font-size:12px;line-height:1.5;color:#65726d}
+
+.source-note{margin:9px 0 0;color:#6c7e6f;font-size:11px;line-height:1.55}
+.source-note a,.rate-provenance a{color:#6554b4;text-underline-offset:2px}
+.rate-actions{display:flex;justify-content:space-between;gap:12px;margin-top:8px;flex-wrap:wrap}
+.rate-actions button,.use-zip-tax{border:0;background:transparent;color:#6554b4;padding:4px 0;font:600 11px 'DM Sans',sans-serif}
+.use-benchmark:disabled,.use-zip-tax:disabled{opacity:.5;cursor:default}
+.rate-card-button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;border:1px solid #e2ddf2;border-radius:9px;padding:12px;margin-top:14px;background:#f4f1fd;color:#6554b4;font:600 12px 'DM Sans',sans-serif}
+.rate-card-button span{font-size:10px;font-weight:400}
+.tax-field{margin:22px 0}
+.tax-field>label{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--ink);font-size:12px;font-weight:600}
+.tax-field select{max-width:190px;padding:6px;border:1px solid #dedfd7;border-radius:6px;background:#fff;color:#455c4c;font:11px 'DM Sans',sans-serif}
+.tax-amount{display:flex;align-items:center;gap:8px;border:1px solid #d7dad5;border-radius:8px;background:#fff;padding:10px 12px;margin-top:10px;color:#65726d;font-size:12px}
+.tax-amount input{width:100%;min-width:0;border:0;color:var(--ink);font:600 16px Manrope;background:transparent;outline-color:#8173de}
+.tax-unit{white-space:nowrap}.use-zip-tax{margin-top:4px}
+.rate-modal{position:fixed;box-sizing:border-box;width:min(710px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;margin:auto;padding:30px;border:1px solid #e3e1d7;border-radius:18px;background:#faf9f5;color:var(--ink);box-shadow:0 20px 70px #132d3b33}
+.rate-modal::backdrop{background:#1d352d70;backdrop-filter:blur(4px)}
+.rate-modal h2{margin:6px 40px 0 0;font:700 26px Manrope,sans-serif;letter-spacing:-.8px}
+.rate-modal .mini{margin:0;color:#8b839f;font-size:10px;letter-spacing:2px}
+.rate-intro{font-size:12px;color:#6c7e6f;margin:8px 0 24px}
+.close-rate{position:absolute;top:18px;right:18px;width:32px;height:32px;border:0;border-radius:50%;background:#efede6;color:#647264;font-size:22px}
+.rate-stats{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.rate-stats>div{border:1px solid #e0dcea;border-radius:12px;padding:16px;background:#fff}
+.rate-stats span{display:flex;align-items:center;gap:7px;color:#6c7e6f;font-size:11px}
+.rate-stats strong{display:block;margin-top:8px;font:700 35px Manrope,sans-serif;color:#6d5bc6;letter-spacing:-1px}
+.rate-stats>div:last-child strong{color:#398370}.rate-stats small{font-size:21px}
+.rate-stats p{margin:6px 0 0;font-size:10px;line-height:1.5;color:#6c7e6f}
+.rate-key{display:inline-block;width:9px;height:9px;border-radius:50%}.rate-key.thirty{background:#7966d2}.rate-key.fifteen{background:#3b967c}
+.rate-ranges{display:flex;gap:5px;margin:0 0 14px}
+.rate-ranges button{flex:1;padding:8px;border:1px solid #dfded7;background:#fff;color:#6c7e6f;border-radius:7px;font:500 11px 'DM Sans',sans-serif}
+.rate-ranges button[aria-pressed=true]{background:#ebe6fc;border-color:#b4a7e2;color:#6554b4}
+.rate-chart{display:block;width:100%;overflow:visible;touch-action:pan-y}
+.rate-line{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}.rate-thirty{stroke:#7966d2}.rate-fifteen{stroke:#3b967c}
+.rate-grid{stroke:#dedfd7;stroke-width:1}.rate-axis text{fill:#7a8479;font:11px 'DM Sans',sans-serif}
+.rate-cursor{stroke:#b5b9ad;stroke-dasharray:4 4}.rate-dot-thirty{fill:#7966d2;stroke:#fff;stroke-width:2}.rate-dot-fifteen{fill:#3b967c;stroke:#fff;stroke-width:2}
+.rate-readout{min-height:18px;text-align:center;font-size:11px;color:#455c4c;margin-top:8px;line-height:1.5}
+.rate-scrub-label{display:block;font-size:10px;color:#6c7e6f;margin-top:14px}
+.rate-scrub-label input{display:block;width:100%;accent-color:#7966d2;margin:8px 0}
+.rate-provenance,.rate-explainer{font-size:11px;line-height:1.6;color:#6c7e6f;margin:16px 0 0}
+.apply-weekly-rate,.retry-rates{width:100%;background:#244c3b;color:white;border:0;border-radius:9px;padding:13px;font:600 12px 'DM Sans',sans-serif;margin-top:18px}
+button:focus-visible,select:focus-visible{outline:2px solid #8173de;outline-offset:3px}
+@media(max-width:600px){.rate-modal{padding:22px 18px}.rate-modal h2{font-size:22px}.rate-stats{gap:8px}.rate-stats>div{padding:12px}.rate-stats strong{font-size:30px}.rate-stats p{font-size:9px}.rate-ranges button{padding:8px 3px;font-size:10px}.tax-field select{max-width:170px}}
