@@ -67,3 +67,8 @@
 .area-tooltip{position:absolute;left:14px;bottom:14px;max-width:calc(100% - 28px);padding:8px 12px;border:1px solid #c9d5c3;border-radius:7px;background:#fffffff0;color:#294838;font:600 12px system-ui,sans-serif;pointer-events:none;display:none;box-shadow:0 3px 12px #25472c15}
 .area-tooltip.visible{display:block}
 .zip-result span small{display:block;margin-top:3px;font-size:9px;color:#869283}
+.price-amount{display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px 12px;border:1px solid #d7dad5;border-radius:8px;background:#fff;color:#65726d}
+.field .price-amount input{width:100%;min-width:0;margin:0;border:0;background:transparent;color:var(--ink);font:600 16px Manrope;outline-color:#8173de}
+.price-source{margin:9px 0 0;color:#6c7e6f;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.price-source a{color:#6554b4;text-underline-offset:2px}
+.calculate:disabled{opacity:.55;cursor:wait}
