@@ -1,26 +1,26 @@
 import { calculateMortgage } from './mortgage.js';
 import { mapStates } from './us-map.js?v=maps-3';
-import { mapMarkup, bindMap, closeStateMap, zipCount } from './map-ui.js?v=pinch-1';
+import { mapMarkup, bindMap, closeStateMap, zipCount } from './map-ui.js?v=cities-1';
 import { getZipHomeValue } from './home-values.js?v=home-values-2';
 import { getZipPropertyTax, estimateTaxPercent } from './property-taxes.js?v=estimates-1';
 import { getInsuranceBenchmarks, estimateInsurance } from './insurance.js';
 import { equityChartMarkup, bindEquityChart } from './equity-chart.js';
 import { nearbyDefaults, regionalDefaults } from './area-estimates.js';
-import { getPriceDistribution, renderPriceDistribution } from './price-distribution.js';
+import { getPriceDistribution, renderPriceDistribution, selectDistributionPrice } from './price-distribution.js?v=selection-1';
 import { getMortgageRates, rateForTerm, isRateStale } from './rates.js';
 import { rateModalMarkup, bindRateModal } from './rate-modal.js?v=rates-taxes-2';
 
 const stateNames = Object.fromEntries(mapStates.map(s=>[s.code,s.name]));
-let selectedState = 'CA';
-let selectedZip = '94107';
+let selectedState = '';
+let selectedZip = '';
 let mapSelection = null;
-let details = { price: 680000, down: 20, rate: 0, term: 30, tax: null, taxMode: 'percent', annualTax: null, insurance: 0, dwellingCoverage: 400000, hoa: 0, pmiRate: .55, extra: 0, appreciation: 3 };
+let details = { price: 0, down: 20, rate: 0, term: 30, tax: null, taxMode: 'percent', annualTax: null, insurance: 0, dwellingCoverage: 400000, hoa: 0, pmiRate: .55, extra: 0, appreciation: 3 };
 let homeValue = { status: 'idle', zip: null, data: null };
 let homeValueRequest = 0, priceEdited = false;
 let taxState = { status: 'idle', zip: null, data: null }, taxRequest = 0, taxEdited = false;
-let rates = { status: 'loading', data: null }, rateMode = 'benchmark';
-let insuranceState = { status:'loading', data:null }, insuranceMode = 'estimate';
-let distributionState={status:'loading',selectedZip,data:null},distributionRequest=0;
+let rates = { status: 'idle', data: null }, rateMode = 'benchmark';
+let insuranceState = { status:'idle', data:null }, insuranceMode = 'estimate';
+let distributionState={status:'idle',selectedZip,data:null},distributionRequest=0;
 
 function money(n, digits=0) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:digits}).format(n); }
 function payment() { const result = calculateMortgage(details); return { ...result, pi: result.principalAndInterest, tax: result.propertyTax }; }
@@ -31,7 +31,6 @@ function app() {
     <header>
       <a class="brand" href="#"><span class="brand-mark">⌂</span><span>haven</span></a>
       <nav><a class="active" href="#calculator">Mortgage calculator</a><a class="homes" href="#homes">Browse homes <em>Coming soon</em></a><a href="#learn">Learn</a></nav>
-      <button class="save-btn">Save my scenario <span>↗</span></button>
     </header>
     <main>
       <section class="intro">
@@ -54,6 +53,8 @@ function app() {
           <div class="map-foot"><span>✦ Census ZIP values & taxes</span><span>50 states · ${zipCount.toLocaleString('en-US')} ZIP locations</span></div>
         </div>
         <aside class="estimate-card">
+          <div class="estimate-empty" ${selectedZip?'hidden':''}><span aria-hidden="true">⌂</span><h2>Your estimate starts here</h2><p>Choose a state, explore a city, and select a ZIP code to see your mortgage estimate.</p></div>
+          <div class="estimate-content" ${selectedZip?'':'hidden'}>
           <div class="estimate-head"><div><span class="dot"></span> PAYMENT ESTIMATE</div><button class="edit" title="Edit details">✎</button></div>
           <p class="location">${stateNames[selectedState]||selectedState} · ${selectedZip}</p>
           <div class="total"><small>ESTIMATED MONTHLY</small><strong>${money(p.total)}</strong><span>/ month</span></div>
@@ -70,6 +71,7 @@ function app() {
           <p class="price-summary" role="status"></p>
           <button class="rate-trends rate-card-button">↗ Rate trends <span>Weekly history</span></button>
           <p class="estimate-assumptions" role="status"></p>
+          </div>
         </aside>
       </section>
       <section class="trust"><div><strong>Make it your estimate.</strong><span>Adjust the defaults to match your lender quote and property.</span></div><div class="trust-items"><span>✓ Census ZIP home values & taxes</span><span>✓ Weekly rate benchmarks</span><span>✓ Compare loan terms</span></div></section>
@@ -79,8 +81,9 @@ function app() {
       <button class="close-panel" aria-label="Close state map">×</button>
       <div class="state-panel-head"><span class="step">02</span><div><p class="mini">EXPLORE THE STATE</p><h2 id="state-title">${stateNames[selectedState]}</h2></div></div>
       <p class="state-instructions">Select an outlined ZIP area, or search by city or ZIP code.</p>
+      <div class="city-shortcuts" role="group" aria-label="City shortcuts"></div>
       <div class="state-explorer">
-        <div class="state-map-card"><div class="state-map-stage"></div><div class="state-map-controls"><button aria-label="Zoom into state">+</button><button aria-label="Zoom out of state">−</button><button aria-label="Reset state map">⌂</button></div><p class="state-map-hint">Every mapped ZIP area is outlined. Pinch with two fingers to zoom; drag to pan.</p></div>
+        <div class="state-map-card"><div class="state-map-stage"></div><div class="state-map-controls"><button aria-label="Zoom into state">+</button><button aria-label="Zoom out of state">−</button><button aria-label="Reset state map">⌂</button></div><p class="state-map-hint"><span class="city-map-key" aria-hidden="true"></span> Purple ZIPs overlap shortcut cities. Pinch to zoom; drag to pan.</p></div>
         <div class="zip-browser"><label for="zip-search">Find your ZIP code</label><input id="zip-search" type="search" placeholder="City or ZIP code" autocomplete="off"><p class="zip-result-count" role="status"></p><div class="zip-results"></div><p class="zip-source-note">Census ZIP areas (2010). Postal ZIPs without mapped areas remain searchable.</p></div>
       </div>
     </div>
@@ -149,7 +152,6 @@ function bind(){
   document.querySelectorAll('.terms button').forEach(b=>b.onclick=()=>{selectTerm(+b.dataset.term); document.querySelectorAll('.terms button').forEach(x=>x.classList.toggle('active',x===b));});
   document.querySelector('.calculate').onclick=()=>{ if(![...document.querySelectorAll('.calc-modal input')].every(input=>input.reportValidity()))return; readDetails(); app(); setTimeout(()=>document.querySelector('.data-drawer').classList.add('open'),20); };
   bindComparisons();
-  document.querySelector('.save-btn').onclick=()=>{const b=document.querySelector('.save-btn'); b.innerHTML='Saved ✓'; setTimeout(()=>b.innerHTML='Save my scenario <span>↗</span>',1800)};
   renderPriceSource();
   renderDataSources();
   renderInsuranceSource();
@@ -159,6 +161,10 @@ function bind(){
 function openCalculator(zip,useMedian=false){
   homeValueRequest++;
   selectedZip=zip;
+  document.querySelector('.estimate-empty').hidden=true;
+  document.querySelector('.estimate-content').hidden=false;
+  if(rates.status==='idle')startRates();
+  if(insuranceState.status==='idle')startInsurance();
   document.querySelector('.location').textContent=`${stateNames[selectedState]} · ${selectedZip}`;
   closeStateMap(false);
   const modal=document.querySelector('.calc-modal');
@@ -245,6 +251,7 @@ function markPriceEdited(){priceEdited=true;homeValue.status='manual';renderPric
 function renderPriceSource(){
   const note=document.querySelector('.price-source');
   const input=document.querySelector('#priceAmount'),hasPrice=Boolean(input.value)&&input.validity.valid;
+  selectDistributionPrice(document.querySelector('.price-distribution'),hasPrice?+input.value:null);
   const hasTax=document.querySelector('#tax').value!==''&&document.querySelector('#tax').validity.valid;
   const hasRate=rateMode==='manual'||Boolean(rates.data);
   const insuranceInput=document.querySelector('#insurance');
@@ -395,7 +402,7 @@ function renderInsuranceSource(){
   const description=insuranceMode==='manual'?'Using your entered monthly premium.':estimate?`${stateNames[selectedState]} estimate for ${money(details.dwellingCoverage)} dwelling rebuild coverage: ${money(estimate.annual)} / year.`:'No estimate is available outside $200,000–$800,000 rebuild coverage. Enter a monthly insurer quote or a supported coverage amount.';
   note.innerHTML=`${description} <a href="${data.source.url}" target="_blank" rel="noopener noreferrer">NerdWallet / Quadrant</a> · ${displayDate(data.source.updatedDate)}. State benchmark at $400,000 coverage, adjusted with the national coverage-cost curve. Assumes good credit and a $1,000 deductible; this is a planning estimate, not a quote. <a href="${data.source.rebuildSourceUrl}" target="_blank" rel="noopener noreferrer">Use rebuilding cost, excluding land</a>. Flood/earthquake and separate wind coverage are extra.${selectedState==='HI'?' Hawaii’s benchmark excludes hurricane wind coverage.':''}`;
 }
-function renderDistribution(){renderPriceDistribution(document.querySelector('.price-distribution'),distributionState,()=>startDistribution(selectedZip));}
+function renderDistribution(){const input=document.querySelector('#priceAmount');renderPriceDistribution(document.querySelector('.price-distribution'),distributionState,()=>startDistribution(selectedZip),input.value&&input.validity.valid?+input.value:null);}
 async function startDistribution(zip){
   const request=++distributionRequest;distributionState={status:'loading',selectedZip:zip,data:null};renderDistribution();
   try{
@@ -407,8 +414,3 @@ async function startDistribution(zip){
   renderDistribution();
 }
 app();
-startMedianLookup(selectedZip);
-startTaxLookup(selectedZip);
-startRates();
-startInsurance();
-startDistribution(selectedZip);

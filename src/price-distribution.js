@@ -2,6 +2,23 @@ const requests=new Map();
 let cachePromise;
 const groups=[['Under $100k',2,14],['$100k–$200k',15,18],['$200k–$300k',19,20],['$300k–$500k',21,22],['$500k–$750k',23,23],['$750k–$1m',24,24],['$1m–$2m',25,26],['$2m+',27,27]];
 const labels=['<100k','100–200k','200–300k','300–500k','500–750k','750k–1m','1–2m','2m+'];
+const thresholds=[100000,200000,300000,500000,750000,1000000,2000000];
+
+export function priceDistributionBin(price){
+  if(!Number.isFinite(price)||price<=0)return null;
+  const index=thresholds.findIndex(limit=>price<limit);
+  return index<0?7:index;
+}
+
+export function selectDistributionPrice(root,price){
+  const selected=priceDistributionBin(price);
+  root.querySelectorAll('[data-price-bin]').forEach(bar=>{
+    const active=+bar.dataset.priceBin===selected;
+    bar.classList.toggle('selected',active);bar.setAttribute('aria-pressed',String(active));
+  });
+  const note=root.querySelector('.distribution-selection');if(!note)return;
+  note.textContent=selected===null?'Enter a home price to highlight its band.':`Your home price: ${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(price)} · ${groups[selected][0]}`;
+}
 
 export function parsePriceDistribution(raw,zip){
   const estimates=raw.data?.[`86000US${zip}`]?.B25075?.estimate;
@@ -36,7 +53,7 @@ export async function getPriceDistribution(zip){
   return requests.get(zip);
 }
 
-export function renderPriceDistribution(root,state,onRetry){
+export function renderPriceDistribution(root,state,onRetry,price=null){
   root.innerHTML='';
   const heading=document.createElement('strong');heading.className='distribution-title';heading.textContent='Home-value distribution';root.append(heading);
   if(!state.data){
@@ -49,6 +66,8 @@ export function renderPriceDistribution(root,state,onRetry){
   const note=document.createElement('p');note.className='source-note'+(fallback?' default-estimate':'');note.textContent=`${fallback?'Nearby ZIP default · ':''}ZIP ${data.zip} · ${data.total.toLocaleString('en-US')} owner-occupied homes`;root.append(note);
   chart.innerHTML=`<svg class="distribution-chart" viewBox="0 0 520 155" role="group" aria-label="Census home-value distribution for ZIP ${data.zip}">${data.bins.map((bin,index)=>{const height=bin.percent/max*105;return `<g class="distribution-bin" data-price-bin="${index}" tabindex="0" role="button" aria-label="${bin.label}: ${bin.percent.toFixed(1)} percent, ${bin.count.toLocaleString('en-US')} homes"><rect x="${10+index*64}" y="8" width="55" height="112" fill="transparent"/><rect class="distribution-bar" x="${12+index*64}" y="${120-height}" width="50" height="${height}" rx="3"/><text x="${37+index*64}" y="137" text-anchor="middle">${labels[index]}</text></g>`;}).join('')}</svg>`;
   root.append(chart);
+  const selection=document.createElement('p');selection.className='distribution-selection';selection.setAttribute('role','status');root.append(selection);
+  selectDistributionPrice(root,price);
   const readout=document.createElement('p');readout.className='distribution-readout';readout.setAttribute('role','status');readout.textContent='Hover, tap, or focus a bar for its share of homes.';root.append(readout);
   chart.querySelectorAll('[data-price-bin]').forEach(bar=>{
     const show=()=>{const bin=data.bins[+bar.dataset.priceBin];readout.textContent=`${bin.label} · ${bin.percent.toFixed(1)}% · ${bin.count.toLocaleString('en-US')} homes`;};

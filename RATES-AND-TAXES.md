@@ -43,6 +43,12 @@ enter an actual annual bill, which stays fixed when the home price changes.
 
 ## Missing data and home-value distribution
 
+The site starts with no selected state, ZIP, or payment estimate. Rate,
+insurance, home-value, tax and distribution downloads begin after a ZIP is
+chosen. The distribution highlights the band containing the entered home
+price and updates on both numeric edits and slider changes. Hovering another
+bar shows that band's share without changing the price selection.
+
 Missing ZIP home values use the nearest reported ZIP among the 32 closest
 postal ZIP centers within 50 miles. Missing taxes use the nearest ZIP with
 both reported home and tax medians, retaining that area's ratio. Distances

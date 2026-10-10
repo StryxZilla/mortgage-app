@@ -1,5 +1,6 @@
 import { mapStates, projectStatePoint } from './us-map.js?v=maps-3';
 import { zipLocations } from './zip-data.js';
+import { stateCities } from './city-shortcuts.js';
 
 export const zipCount = Object.values(zipLocations).reduce((n,rows)=>n+rows.length,0);
 const postalDirectory = new Map(Object.values(zipLocations).flat().map(row=>[row[0],row]));
@@ -10,6 +11,7 @@ let currentRegion, onZip, returnFocus, points = [], areas = [], areaByZip = new 
 let loadId=0, loading=false, loadError='';
 const boundaryCache=new Map();
 let resizeObserver;
+let selectedCity=null;
 const escape = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 export function mapMarkup(selectedCode){
@@ -82,6 +84,7 @@ export function bindMap(selectZip){
   document.querySelectorAll('.map-controls button').forEach((button,i)=>button.onclick=()=>{nationalView=i===2?[...nationView]:zoom(nationalView,i===0?.75:4/3,nationView);applyView(svg,nationalView);});
   pan(svg,()=>nationalView,view=>{nationalView=view;applyView(svg,view);});
   document.querySelector('#zip-search').oninput=()=>{
+    selectedCity=null;updateCitySelection();
     renderResults();
     fitSearch();
     updateDetail();
@@ -89,7 +92,16 @@ export function bindMap(selectZip){
   document.querySelector('.zip-results').onclick=e=>{
     const button=e.target.closest('[data-zip]');if(button)onZip(currentRegion.code,button.dataset.zip);
   };
-  document.querySelectorAll('.state-map-controls button').forEach((button,i)=>button.onclick=()=>{detailView=i===2?[0,0,960,600]:zoom(detailView,i===0?.6:1/.6,[0,0,960,600],480);updateDetail();});
+  document.querySelector('.city-shortcuts').onclick=e=>{
+    const button=e.target.closest('[data-city]');if(!button||!currentRegion)return;
+    selectedCity=(stateCities[currentRegion.code]||[]).find(city=>city.id===button.dataset.city)??null;
+    document.querySelector('#zip-search').value=selectedCity?.name??'';
+    updateCitySelection();renderResults();fitSearch();updateDetail();
+  };
+  document.querySelectorAll('.state-map-controls button').forEach((button,i)=>button.onclick=()=>{
+    if(i===2){selectedCity=null;document.querySelector('#zip-search').value='';updateCitySelection();renderResults();}
+    detailView=i===2?[0,0,960,600]:zoom(detailView,i===0?.6:1/.6,[0,0,960,600],480);updateDetail();
+  });
   document.querySelector('.zip-panel').addEventListener('keydown',e=>{
     if(e.key==='Escape'){document.querySelector('.close-panel').click();return;}
     if(e.key==='Tab'){
@@ -115,6 +127,7 @@ async function loadBoundaries(code){
 
 export async function openState(code){
   currentRegion=mapStates.find(s=>s.code===code);if(!currentRegion)return;
+  selectedCity=null;renderCityShortcuts();
   const requestId=++loadId;
   returnFocus=document.activeElement;
   const region=currentRegion;
@@ -134,7 +147,8 @@ export async function openState(code){
   svg.addEventListener('pointerover',e=>{
     const path=e.target.closest('.zip-area');if(!path)return;
     const entry=points.find(p=>p.row[0]===path.dataset.zip);
-    document.querySelector('.area-tooltip').textContent=`${path.dataset.zip}${entry?.row[1]&&entry.row[1]!=='ZIP area'?' · '+entry.row[1]:''}`;
+    const cities=(stateCities[currentRegion.code]||[]).filter(city=>city.zips.includes(path.dataset.zip)).map(city=>city.name);
+    document.querySelector('.area-tooltip').textContent=`${path.dataset.zip}${entry?.row[1]&&entry.row[1]!=='ZIP area'?' · '+entry.row[1]:''}${cities.length?' · City view: '+cities.join(', '):''}`;
     document.querySelector('.area-tooltip').classList.add('visible');
   });
   svg.addEventListener('pointerleave',()=>document.querySelector('.area-tooltip').classList.remove('visible'));
@@ -154,7 +168,8 @@ export async function openState(code){
     // Keep every geographic ZIP area selectable, including those state portions.
     for(const area of areas)if(!known.has(area.zip))points.push({row:postalDirectory.get(area.zip)||[area.zip,'ZIP area'],x:area.center[0],y:area.center[1]});
     points.sort((a,b)=>a.row[0].localeCompare(b.row[0]));
-    svg.querySelector('.zip-areas').innerHTML=areas.map(area=>`<path class="zip-area" data-zip="${area.zip}" d="${area.path}" fill="${areaColor(area.zip)}" fill-rule="evenodd" role="button" tabindex="-1" aria-label="Select ZIP ${area.zip}"><title>ZIP ${area.zip}</title></path>`).join('');
+    const cityZips=new Set((stateCities[code]||[]).flatMap(city=>city.zips));
+    svg.querySelector('.zip-areas').innerHTML=areas.map(area=>`<path class="zip-area${cityZips.has(area.zip)?' city-zip':''}" data-zip="${area.zip}" d="${area.path}" fill="${areaColor(area.zip)}" fill-rule="evenodd" role="button" tabindex="-1" aria-label="Select ZIP ${area.zip}"><title>ZIP ${area.zip}</title></path>`).join('');
     document.querySelector('.boundary-status').classList.add('hidden');
     renderResults();
     // A search entered during loading must fit the newly available area bounds.
@@ -167,9 +182,20 @@ export async function openState(code){
   }
 }
 
-function filteredPoints(){const query=document.querySelector('#zip-search').value.trim().toLowerCase();return points.filter(p=>!query||p.row[0].startsWith(query)||p.row[1].toLowerCase().includes(query));}
+function renderCityShortcuts(){
+  const root=document.querySelector('.city-shortcuts');
+  root.innerHTML=`<span class="city-shortcut-label">Jump to a city</span><div class="city-buttons"><button data-city="" aria-pressed="true">All ZIPs</button>${(stateCities[currentRegion.code]||[]).map(city=>`<button data-city="${city.id}" aria-pressed="false">${escape(city.name)}</button>`).join('')}</div>`;
+}
+function updateCitySelection(){
+  document.querySelectorAll('[data-city]').forEach(button=>button.setAttribute('aria-pressed',button.dataset.city===(selectedCity?.id??'')));
+}
+function filteredPoints(){
+  if(selectedCity){const zips=new Set(selectedCity.zips);return points.filter(p=>zips.has(p.row[0]));}
+  const query=document.querySelector('#zip-search').value.trim().toLowerCase();return points.filter(p=>!query||p.row[0].startsWith(query)||p.row[1].toLowerCase().includes(query));
+}
 
 function fitSearch(){
+  if(selectedCity){detailView=[...selectedCity.view];return;}
   const matches=filteredPoints();detailView=[0,0,960,600];
   if(!document.querySelector('#zip-search').value.trim()||!matches.length)return;
   const bounds=matches.flatMap(p=>areaByZip.get(p.row[0])?.bounds||[[p.x,p.y],[p.x,p.y]]);
@@ -182,7 +208,7 @@ function fitSearch(){
 function renderResults(){
   if(!currentRegion)return;
   const matches=filteredPoints(),mapped=matches.filter(p=>areaByZip.has(p.row[0])).length;
-  document.querySelector('.zip-result-count').textContent=loading?`${matches.length.toLocaleString('en-US')} ZIP codes · loading outlines…`:`${matches.length.toLocaleString('en-US')} ZIP codes · ${mapped.toLocaleString('en-US')} mapped areas`;
+  document.querySelector('.zip-result-count').textContent=`${selectedCity?selectedCity.name+' · ':''}`+(loading?`${matches.length.toLocaleString('en-US')} ZIP codes · loading outlines…`:`${matches.length.toLocaleString('en-US')} ZIP codes · ${mapped.toLocaleString('en-US')} mapped areas`);
   document.querySelector('.zip-results').innerHTML=matches.length?matches.map(p=>`<button class="zip-result" data-zip="${p.row[0]}"><strong>${p.row[0]}</strong><span>${escape(p.row[1])}${!loading&&!areaByZip.has(p.row[0])?'<small>Postal ZIP · no mapped area</small>':''}</span><b aria-hidden="true">→</b></button>`).join(''):'<p class="zip-empty">No matching ZIP codes in this state. Try another city or ZIP.</p>';
   document.querySelector('.zip-results').scrollTop=0;
 }
