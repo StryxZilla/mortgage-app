@@ -53,3 +53,17 @@
 @media(max-width:900px){.workspace{grid-template-columns:1fr}.map-wrap{height:430px}.zip-panel{inset:3vh 3vw;padding:22px}.state-explorer{grid-template-columns:minmax(0,1fr) 220px}}
 @media(max-width:600px){.map-wrap{height:295px}.geographic-map{inset:6px 4px 52px}.map-label{left:14px;bottom:16px;font-size:10px}.map-label strong{font-size:12px}.compass{right:15px;top:12px}.state-select{width:100%;justify-content:space-between}.state-select select{max-width:none;flex:1}.map-top{gap:12px}.zip-panel{inset:12px;padding:20px 16px;gap:8px}.state-panel-head h2{font-size:23px}.state-instructions{font-size:12px;max-width:95%}.state-explorer{display:flex;flex-direction:column;gap:12px;min-height:0}.state-map-card{height:40%;min-height:210px;flex:1}.state-map-stage{min-height:0;flex:1;padding:8px 8px 3px}.state-map-hint{font-size:10px;padding:8px}.zip-browser{flex:1;min-height:160px;gap:7px}.zip-result{padding:10px}.zip-source-note{font-size:10px}.close-panel{right:14px;top:14px;width:30px;height:30px}.state-panel-head{padding-right:30px}.map-foot span:first-child{max-width:none}.map-controls{bottom:14px;right:14px}}
 @media(prefers-reduced-motion:reduce){.geo-state,.zip-panel,.calc-modal{transition:none}}
+
+/* Every Census ZIP area is drawn; labels adapt to the visible zoom level. */
+.state-map-stage{position:relative}
+.zip-area{stroke:#778b7f;stroke-width:.65;vector-effect:non-scaling-stroke;stroke-linejoin:round;cursor:pointer;transition:fill .12s;outline:none}
+.zip-area:hover,.zip-area:focus-visible{fill:#b3a2f3!important;stroke:#534194;stroke-width:1.7}
+.zip-area.muted{fill:#ebeee7;stroke:#c1cec0}
+.zip-area.matching{fill:#d0c5f4;stroke:#7155b7;stroke-width:1.2}
+.zip-area-label{font-family:system-ui,sans-serif;font-weight:600;text-anchor:middle;dominant-baseline:middle;fill:#2e4737;pointer-events:none;paint-order:stroke;stroke:#ffffffc4;stroke-width:3;vector-effect:non-scaling-stroke}
+.state-border{fill:none;stroke:#819179;stroke-width:1.4;stroke-linejoin:round;vector-effect:non-scaling-stroke;pointer-events:none}
+.boundary-status{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:85%;padding:14px 18px;background:#faf9f5e8;border:1px solid #d4dece;border-radius:9px;font-size:12px;text-align:center;color:#455e4c;pointer-events:none}
+.boundary-status.hidden{display:none}
+.area-tooltip{position:absolute;left:14px;bottom:14px;max-width:calc(100% - 28px);padding:8px 12px;border:1px solid #c9d5c3;border-radius:7px;background:#fffffff0;color:#294838;font:600 12px system-ui,sans-serif;pointer-events:none;display:none;box-shadow:0 3px 12px #25472c15}
+.area-tooltip.visible{display:block}
+.zip-result span small{display:block;margin-top:3px;font-size:9px;color:#869283}

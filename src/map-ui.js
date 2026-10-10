@@ -2,10 +2,13 @@ import { mapStates, projectStatePoint } from './us-map.js?v=maps-3';
 import { zipLocations } from './zip-data.js';
 
 export const zipCount = Object.values(zipLocations).reduce((n,rows)=>n+rows.length,0);
+const postalDirectory = new Map(Object.values(zipLocations).flat().map(row=>[row[0],row]));
 const nationView = [0,0,1040,610];
 const callouts = {VT:[948,100],NH:[998,138],MA:[998,205],RI:[998,243],CT:[998,281],NJ:[998,319],DE:[998,357],MD:[998,395]};
 let nationalView = [...nationView], detailView = [0,0,960,600];
-let currentRegion, onZip, returnFocus, points = [], groups = [];
+let currentRegion, onZip, returnFocus, points = [], areas = [], areaByZip = new Map();
+let loadId=0, loading=false, loadError='';
+const boundaryCache=new Map();
 let resizeObserver;
 const escape = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -18,8 +21,8 @@ export function mapMarkup(selectedCode){
 }
 
 function applyView(svg,view){svg.setAttribute('viewBox',view.join(' '));}
-function zoom(view,factor,limits){
-  const width=Math.max(limits[2]/12,Math.min(limits[2],view[2]*factor));
+function zoom(view,factor,limits,maxZoom=12){
+  const width=Math.max(limits[2]/maxZoom,Math.min(limits[2],view[2]*factor));
   const height=width*limits[3]/limits[2];
   return [Math.max(limits[0],Math.min(limits[0]+limits[2]-width,view[0]+(view[2]-width)/2)),Math.max(limits[1],Math.min(limits[1]+limits[3]-height,view[1]+(view[3]-height)/2)),width,height];
 }
@@ -33,9 +36,9 @@ function pan(svg,getView,setView){
 }
 
 export function bindMap(selectZip){
-  onZip=selectZip; currentRegion=null; nationalView=[...nationView];
+  loadId++; onZip=selectZip; currentRegion=null; nationalView=[...nationView];
   resizeObserver?.disconnect();
-  resizeObserver=new ResizeObserver(()=>{if(currentRegion&&document.querySelector('.zip-panel.open'))renderMarkers();});
+  resizeObserver=new ResizeObserver(()=>{if(currentRegion&&document.querySelector('.zip-panel.open'))renderAreaLabels();});
   resizeObserver.observe(document.querySelector('.state-map-stage'));
   const svg=document.querySelector('.us-map');
   document.querySelectorAll('.state-choice').forEach(el=>{
@@ -47,16 +50,13 @@ export function bindMap(selectZip){
   pan(svg,()=>nationalView,view=>{nationalView=view;applyView(svg,view);});
   document.querySelector('#zip-search').oninput=()=>{
     renderResults();
-    const matches=filteredPoints();detailView=[0,0,960,600];
-    if(document.querySelector('#zip-search').value.trim()&&matches.length){
-      const x0=Math.min(...matches.map(p=>p.x)),x1=Math.max(...matches.map(p=>p.x));
-      const y0=Math.min(...matches.map(p=>p.y)),y1=Math.max(...matches.map(p=>p.y));
-      const width=Math.min(960,Math.max(150,(x1-x0+30)*1.2,(y1-y0+30)*960/600*1.2));
-      detailView=[(x0+x1-width)/2,(y0+y1-width*600/960)/2,width,width*600/960];
-    }
+    fitSearch();
     updateDetail();
   };
-  document.querySelectorAll('.state-map-controls button').forEach((button,i)=>button.onclick=()=>{detailView=i===2?[0,0,960,600]:zoom(detailView,i===0?.6:1/.6,[0,0,960,600]);updateDetail();});
+  document.querySelector('.zip-results').onclick=e=>{
+    const button=e.target.closest('[data-zip]');if(button)onZip(currentRegion.code,button.dataset.zip);
+  };
+  document.querySelectorAll('.state-map-controls button').forEach((button,i)=>button.onclick=()=>{detailView=i===2?[0,0,960,600]:zoom(detailView,i===0?.6:1/.6,[0,0,960,600],480);updateDetail();});
   document.querySelector('.zip-panel').addEventListener('keydown',e=>{
     if(e.key==='Escape'){document.querySelector('.close-panel').click();return;}
     if(e.key==='Tab'){
@@ -67,87 +67,120 @@ export function bindMap(selectZip){
   });
 }
 
-export function openState(code){
+function areaColor(zip){return ['#e2ecde','#ede9f5','#dfeae6','#f0ecd9','#e6ebdc','#e5e4f3'][Number(zip)%6];}
+
+async function loadBoundaries(code){
+  if(!boundaryCache.has(code)){
+    const request=fetch(new URL(`./zip-boundaries/${code}.json?v=zip-areas-1`,import.meta.url))
+      .then(response=>{if(!response.ok)throw new Error('ZIP areas could not be loaded.');return response.json();})
+      .then(data=>{if(!Array.isArray(data.areas)||!data.areas.length)throw new Error('ZIP areas are unavailable.');return data;})
+      .catch(error=>{boundaryCache.delete(code);throw error;});
+    boundaryCache.set(code,request);
+  }
+  return boundaryCache.get(code);
+}
+
+export async function openState(code){
   currentRegion=mapStates.find(s=>s.code===code);if(!currentRegion)return;
+  const requestId=++loadId;
   returnFocus=document.activeElement;
   const region=currentRegion;
   points=(zipLocations[code]||[]).map(row=>{const [x,y]=projectStatePoint(region,row[2],row[3]);return {row,x,y};}).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+  areas=[];areaByZip=new Map();loading=true;loadError='';
   detailView=[0,0,960,600];
   document.querySelector('#state-title').textContent=region.name;
   document.querySelector('#zip-search').value='';
-  document.querySelector('.state-map-stage').innerHTML=`<svg class="selected-state-map" viewBox="0 0 960 600" aria-label="${region.name} ZIP locations"><path class="detail-land" d="${region.detailPath}"/><g class="zip-markers"></g></svg>`;
+  document.querySelector('.state-map-stage').innerHTML=`<svg class="selected-state-map" viewBox="0 0 960 600" aria-label="${region.name} ZIP areas"><path class="detail-land" d="${region.detailPath}"/><g class="zip-areas"></g><g class="zip-labels"></g><path class="state-border" d="${region.detailPath}"/></svg><div class="boundary-status" role="status">Loading ZIP area outlines…</div><div class="area-tooltip" role="status"></div>`;
   const svg=document.querySelector('.selected-state-map');
   pan(svg,()=>detailView,view=>{detailView=view;updateDetail();});
   svg.addEventListener('click',e=>{
     if(svg.dataset.dragged)return;
-    const target=e.target.closest('[data-marker]');if(!target)return;
-    selectMarker(+target.dataset.marker);
+    const target=e.target.closest('.zip-area');if(target)onZip(currentRegion.code,target.dataset.zip);
   });
-  svg.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const target=e.target.closest('[data-marker]');if(target){e.preventDefault();selectMarker(+target.dataset.marker);}}});
+  svg.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const target=e.target.closest('.zip-area');if(target){e.preventDefault();onZip(currentRegion.code,target.dataset.zip);}}});
+  svg.addEventListener('pointerover',e=>{
+    const path=e.target.closest('.zip-area');if(!path)return;
+    const entry=points.find(p=>p.row[0]===path.dataset.zip);
+    document.querySelector('.area-tooltip').textContent=`${path.dataset.zip}${entry?.row[1]&&entry.row[1]!=='ZIP area'?' · '+entry.row[1]:''}`;
+    document.querySelector('.area-tooltip').classList.add('visible');
+  });
+  svg.addEventListener('pointerleave',()=>document.querySelector('.area-tooltip').classList.remove('visible'));
+  svg.addEventListener('wheel',e=>{e.preventDefault();detailView=zoom(detailView,e.deltaY<0?.8:1.25,[0,0,960,600],480);updateDetail();},{passive:false});
   document.querySelectorAll('.state-choice').forEach(el=>{el.classList.toggle('active',el.dataset.state===code);el.setAttribute('aria-pressed',el.dataset.state===code);});
   document.querySelectorAll('header,main').forEach(el=>el.inert=true);
   const panel=document.querySelector('.zip-panel');panel.inert=false;panel.classList.add('open');
   document.querySelector('.overlay').classList.add('open');
-  renderResults();renderMarkers();
+  renderResults();
   document.querySelector('.close-panel').focus();
+  try{
+    const data=await loadBoundaries(code);
+    if(requestId!==loadId)return;
+    areas=data.areas;areaByZip=new Map(areas.map(area=>[area.zip,area]));loading=false;
+    const known=new Set(points.map(p=>p.row[0]));
+    // Census areas can cross postal-state borders or lack a current postal record.
+    // Keep every geographic ZIP area selectable, including those state portions.
+    for(const area of areas)if(!known.has(area.zip))points.push({row:postalDirectory.get(area.zip)||[area.zip,'ZIP area'],x:area.center[0],y:area.center[1]});
+    points.sort((a,b)=>a.row[0].localeCompare(b.row[0]));
+    svg.querySelector('.zip-areas').innerHTML=areas.map(area=>`<path class="zip-area" data-zip="${area.zip}" d="${area.path}" fill="${areaColor(area.zip)}" fill-rule="evenodd" role="button" tabindex="-1" aria-label="Select ZIP ${area.zip}"><title>ZIP ${area.zip}</title></path>`).join('');
+    document.querySelector('.boundary-status').classList.add('hidden');
+    renderResults();
+    // A search entered during loading must fit the newly available area bounds.
+    if(document.querySelector('#zip-search').value.trim())fitSearch();
+    updateDetail();
+  }catch(error){
+    if(requestId!==loadId)return;
+    loading=false;loadError='ZIP outlines could not load. Close and reopen this state to retry.';
+    document.querySelector('.boundary-status').textContent=loadError;renderResults();
+  }
 }
 
 function filteredPoints(){const query=document.querySelector('#zip-search').value.trim().toLowerCase();return points.filter(p=>!query||p.row[0].startsWith(query)||p.row[1].toLowerCase().includes(query));}
 
+function fitSearch(){
+  const matches=filteredPoints();detailView=[0,0,960,600];
+  if(!document.querySelector('#zip-search').value.trim()||!matches.length)return;
+  const bounds=matches.flatMap(p=>areaByZip.get(p.row[0])?.bounds||[[p.x,p.y],[p.x,p.y]]);
+  const x0=Math.min(...bounds.map(p=>p[0])),x1=Math.max(...bounds.map(p=>p[0]));
+  const y0=Math.min(...bounds.map(p=>p[1])),y1=Math.max(...bounds.map(p=>p[1]));
+  const width=Math.min(960,Math.max(12,(x1-x0)*1.25,(y1-y0)*960/600*1.25));
+  detailView=[(x0+x1-width)/2,(y0+y1-width*600/960)/2,width,width*600/960];
+}
+
 function renderResults(){
   if(!currentRegion)return;
-  const matches=filteredPoints();
-  document.querySelector('.zip-result-count').textContent=`${matches.length.toLocaleString('en-US')} ZIP locations${matches.length>40?' · showing first 40':''}`;
-  document.querySelector('.zip-results').innerHTML=matches.length?matches.slice(0,40).map(p=>`<button class="zip-result" data-zip="${p.row[0]}"><strong>${p.row[0]}</strong><span>${escape(p.row[1])}</span><b aria-hidden="true">→</b></button>`).join(''):'<p class="zip-empty">No matching ZIP codes in this state. Try another city or ZIP.</p>';
-  document.querySelectorAll('.zip-result').forEach(button=>button.onclick=()=>onZip(currentRegion.code,button.dataset.zip));
+  const matches=filteredPoints(),mapped=matches.filter(p=>areaByZip.has(p.row[0])).length;
+  document.querySelector('.zip-result-count').textContent=loading?`${matches.length.toLocaleString('en-US')} ZIP codes · loading outlines…`:`${matches.length.toLocaleString('en-US')} ZIP codes · ${mapped.toLocaleString('en-US')} mapped areas`;
+  document.querySelector('.zip-results').innerHTML=matches.length?matches.map(p=>`<button class="zip-result" data-zip="${p.row[0]}"><strong>${p.row[0]}</strong><span>${escape(p.row[1])}${!loading&&!areaByZip.has(p.row[0])?'<small>Postal ZIP · no mapped area</small>':''}</span><b aria-hidden="true">→</b></button>`).join(''):'<p class="zip-empty">No matching ZIP codes in this state. Try another city or ZIP.</p>';
+  document.querySelector('.zip-results').scrollTop=0;
 }
 
-function renderMarkers(){
+function renderAreaLabels(){
   if(!currentRegion)return;
-  const svg=document.querySelector('.selected-state-map'), box=svg.getBoundingClientRect();
-  const scale=Math.min(box.width/detailView[2],box.height/detailView[3])||.5;
-  const cell=38/scale, bins=new Map();
-  for(const p of filteredPoints()){
-    if(p.x<detailView[0]||p.x>detailView[0]+detailView[2]||p.y<detailView[1]||p.y>detailView[1]+detailView[3])continue;
-    const key=`${Math.floor(p.x/cell)},${Math.floor(p.y/cell)}`;
-    if(!bins.has(key))bins.set(key,[]);bins.get(key).push(p);
-  }
-  groups=[...bins.values()];
-  // Neighboring grid cells can place their centers too close together.
-  // Merge those groups so the visible markers remain distinct click targets.
-  const center=items=>[items.reduce((n,p)=>n+p.x,0)/items.length,items.reduce((n,p)=>n+p.y,0)/items.length];
-  for(let i=0;i<groups.length;i++){
-    for(let j=i+1;j<groups.length;j++){
-      const a=center(groups[i]),b=center(groups[j]);
-      if(Math.hypot(a[0]-b[0],a[1]-b[1])<30/scale){groups[i].push(...groups[j]);groups.splice(j,1);j=i;}
-    }
-  }
-  svg.querySelector('.zip-markers').innerHTML=groups.map((items,i)=>{
-    const x=items.reduce((n,p)=>n+p.x,0)/items.length,y=items.reduce((n,p)=>n+p.y,0)/items.length;
-    const single=items.length===1,r=(single?5:13)/scale;
-    const label=single?`${items[0].row[0]} · ${items[0].row[1]}`:`Zoom into ${items.length} ZIP locations`;
-    return `<g class="zip-marker ${single?'single':'cluster'}" data-marker="${i}" tabindex="0" role="button" aria-label="${escape(label)}"><title>${escape(label)}</title><circle cx="${x}" cy="${y}" r="${r}"/>${single?'':`<text x="${x}" y="${y}" style="font-size:${10/scale}px">${items.length}</text>`}</g>`;
-  }).join('');
+  const svg=document.querySelector('.selected-state-map');if(!svg)return;
+  const box=svg.getBoundingClientRect(),scale=Math.min(box.width/detailView[2],box.height/detailView[3])||.5;
+  svg.querySelector('.state-border').style.opacity=detailView[2]<300?'0':'1';
+  svg.querySelector('.detail-land').style.opacity=detailView[2]<300?'.2':'1';
+  const query=document.querySelector('#zip-search').value.trim();
+  const matching=new Set(filteredPoints().map(p=>p.row[0]));
+  svg.querySelectorAll('.zip-area').forEach(path=>{
+    path.classList.toggle('muted',Boolean(query)&&!matching.has(path.dataset.zip));
+    path.classList.toggle('matching',Boolean(query)&&matching.has(path.dataset.zip));
+  });
+  const occupied=[];
+  svg.querySelector('.zip-labels').innerHTML=areas.filter(area=>{
+    if(query&&!matching.has(area.zip))return false;
+    const [[x0,y0],[x1,y1]]=area.bounds,[x,y]=area.center;
+    if(x<detailView[0]||x>detailView[0]+detailView[2]||y<detailView[1]||y>detailView[1]+detailView[3])return false;
+    if(!(query&&matching.size===1)&&((x1-x0)*scale<28||(y1-y0)*scale<16))return false;
+    if(occupied.some(p=>Math.abs(p[0]-x)*scale<42&&Math.abs(p[1]-y)*scale<16))return false;
+    occupied.push([x,y]);return true;
+  }).map(area=>`<text class="zip-area-label" x="${area.center[0]}" y="${area.center[1]}" style="font-size:${11/scale}px">${area.zip}</text>`).join('');
 }
 
-function selectMarker(index){
-  const items=groups[index];if(!items)return;
-  if(items.length===1){onZip(currentRegion.code,items[0].row[0]);return;}
-  // ZIPs can share a centroid (PO boxes); show those choices instead of endless zoom.
-  const x0=Math.min(...items.map(p=>p.x)),x1=Math.max(...items.map(p=>p.x));
-  const y0=Math.min(...items.map(p=>p.y)),y1=Math.max(...items.map(p=>p.y));
-  if(Math.max(x1-x0,y1-y0)<1||detailView[2]<=60.01){
-    document.querySelector('.zip-result-count').textContent=`${items.length} ZIP codes at this location`;
-    document.querySelector('.zip-results').innerHTML=items.map(p=>`<button class="zip-result" data-zip="${p.row[0]}"><strong>${p.row[0]}</strong><span>${escape(p.row[1])}</span><b aria-hidden="true">→</b></button>`).join('');
-    document.querySelectorAll('.zip-result').forEach(b=>b.onclick=()=>onZip(currentRegion.code,b.dataset.zip));return;
-  }
-  const width=Math.max(60,(x1-x0+20)*1.5,(y1-y0+20)*960/600*1.5),height=width*600/960;
-  detailView=[(x0+x1-width)/2,(y0+y1-height)/2,width,height];updateDetail();
-}
-
-function updateDetail(){applyView(document.querySelector('.selected-state-map'),detailView);renderMarkers();}
+function updateDetail(){applyView(document.querySelector('.selected-state-map'),detailView);renderAreaLabels();}
 
 export function closeStateMap(restoreFocus=true){
+  loadId++;
   const panel=document.querySelector('.zip-panel');panel.classList.remove('open');panel.inert=true;
   if(restoreFocus){document.querySelectorAll('header,main').forEach(el=>el.inert=false);returnFocus?.focus();returnFocus=null;}
 }

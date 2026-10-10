@@ -1,6 +1,6 @@
 import { amortizationSchedule, calculateMortgage } from './mortgage.js';
 import { mapStates } from './us-map.js?v=maps-3';
-import { mapMarkup, bindMap, closeStateMap, zipCount } from './map-ui.js?v=maps-3';
+import { mapMarkup, bindMap, closeStateMap, zipCount } from './map-ui.js?v=zip-areas-1';
 
 const stateNames = Object.fromEntries(mapStates.map(s=>[s.code,s.name]));
 let selectedState = 'CA';
@@ -59,10 +59,10 @@ function app() {
     <div class="zip-panel" role="dialog" aria-modal="true" aria-labelledby="state-title" inert>
       <button class="close-panel" aria-label="Close state map">×</button>
       <div class="state-panel-head"><span class="step">02</span><div><p class="mini">EXPLORE THE STATE</p><h2 id="state-title">${stateNames[selectedState]}</h2></div></div>
-      <p class="state-instructions">Choose a ZIP on the map, or search by city or ZIP code.</p>
+      <p class="state-instructions">Select an outlined ZIP area, or search by city or ZIP code.</p>
       <div class="state-explorer">
-        <div class="state-map-card"><div class="state-map-stage"></div><div class="state-map-controls"><button aria-label="Zoom into state">+</button><button aria-label="Zoom out of state">−</button><button aria-label="Reset state map">⌂</button></div><p class="state-map-hint">Dots show ZIP locations. Select a numbered group to zoom in.</p></div>
-        <div class="zip-browser"><label for="zip-search">Find your ZIP code</label><input id="zip-search" type="search" placeholder="City or ZIP code" autocomplete="off"><p class="zip-result-count" role="status"></p><div class="zip-results"></div><p class="zip-source-note">Approximate ZIP centers, not ZIP boundaries.</p></div>
+        <div class="state-map-card"><div class="state-map-stage"></div><div class="state-map-controls"><button aria-label="Zoom into state">+</button><button aria-label="Zoom out of state">−</button><button aria-label="Reset state map">⌂</button></div><p class="state-map-hint">Every mapped ZIP area is outlined. Zoom to read smaller ZIP labels; drag to pan.</p></div>
+        <div class="zip-browser"><label for="zip-search">Find your ZIP code</label><input id="zip-search" type="search" placeholder="City or ZIP code" autocomplete="off"><p class="zip-result-count" role="status"></p><div class="zip-results"></div><p class="zip-source-note">Census ZIP areas (2010). Postal ZIPs without mapped areas remain searchable.</p></div>
       </div>
     </div>
     <div class="calc-modal" role="dialog" aria-modal="true" aria-label="Mortgage details" inert>
