@@ -1,0 +1,82 @@
+// Generate browser-ready geometry from Census-derived us-atlas boundaries.
+// Run with d3-geo, topojson-client, and us-atlas installed, or set
+// MAP_DEPENDENCY_ROOT to a directory containing their node_modules.
+import { readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const dependencyRoot = process.env.MAP_DEPENDENCY_ROOT;
+const moduleUrl = (name, entry) => dependencyRoot
+  ? pathToFileURL(resolve(dependencyRoot, 'node_modules', name, entry)).href
+  : name;
+const { geoAlbersUsa, geoBounds, geoConicEqualArea, geoPath } = await import(moduleUrl('d3-geo', 'src/index.js'));
+const { feature } = await import(moduleUrl('topojson-client', 'dist/topojson-client.js'));
+const atlasPath = dependencyRoot
+  ? resolve(dependencyRoot, 'node_modules/us-atlas/states-10m.json')
+  : fileURLToPath(import.meta.resolve('us-atlas/states-10m.json'));
+const topology = JSON.parse(await readFile(atlasPath, 'utf8'));
+const stateNames = Object.fromEntries(`AL Alabama|AK Alaska|AZ Arizona|AR Arkansas|CA California|CO Colorado|CT Connecticut|DE Delaware|FL Florida|GA Georgia|HI Hawaii|ID Idaho|IL Illinois|IN Indiana|IA Iowa|KS Kansas|KY Kentucky|LA Louisiana|ME Maine|MD Maryland|MA Massachusetts|MI Michigan|MN Minnesota|MS Mississippi|MO Missouri|MT Montana|NE Nebraska|NV Nevada|NH New Hampshire|NJ New Jersey|NM New Mexico|NY New York|NC North Carolina|ND North Dakota|OH Ohio|OK Oklahoma|OR Oregon|PA Pennsylvania|RI Rhode Island|SC South Carolina|SD South Dakota|TN Tennessee|TX Texas|UT Utah|VT Vermont|VA Virginia|WA Washington|WV West Virginia|WI Wisconsin|WY Wyoming`.split('|').map(item => item.split(/ (.*)/s).slice(0, 2)));
+const codesByName = Object.fromEntries(Object.entries(stateNames).map(([code, name]) => [name, code]));
+const states = feature(topology, topology.objects.states).features.filter(state => codesByName[state.properties.name]);
+const collection = { type: 'FeatureCollection', features: states };
+const nationalProjection = geoAlbersUsa().fitExtent([[35, 20], [925, 560]], collection);
+const nationalPath = geoPath(nationalProjection).digits(2);
+const round = value => +value.toFixed(2);
+const roundPoint = point => point.map(round);
+const radians = Math.PI / 180;
+
+const records = states.map(state => {
+  const code = codesByName[state.properties.name];
+  const [[west, south], [east, north]] = geoBounds(state);
+  // A wrapped longitude interval is essential for western Aleutian islands:
+  // Alaska's western bound is east of 180° while its mainland is west of it.
+  let longitude = (west + (east < west ? east + 360 : east)) / 2;
+  if (longitude > 180) longitude -= 360;
+  const latitude = (south + north) / 2;
+  const parallels = [south + (north - south) / 4, south + 3 * (north - south) / 4];
+  const detailProjection = geoConicEqualArea()
+    .rotate([-longitude, 0])
+    .center([0, latitude])
+    .parallels(parallels)
+    .precision(0.15)
+    .fitExtent([[32, 32], [928, 568]], state);
+  const detailPath = geoPath(detailProjection).digits(2);
+  const sinSouth = Math.sin(parallels[0] * radians);
+  const n = (sinSouth + Math.sin(parallels[1] * radians)) / 2;
+  const c = 1 + sinSouth * (2 * n - sinSouth);
+  const r0 = Math.sqrt(c) / n;
+  const centerY = r0 - Math.sqrt(c - 2 * n * Math.sin(latitude * radians)) / n;
+  return {
+    code,
+    name: state.properties.name,
+    path: nationalPath(state),
+    // The archipelago centroid falls in the ocean; anchor the label on Hawaii.
+    center: roundPoint(code === 'HI' ? nationalProjection([-155.55, 19.65]) : nationalPath.centroid(state)),
+    bounds: nationalPath.bounds(state).map(roundPoint),
+    detailPath: detailPath(state),
+    detailBounds: detailPath.bounds(state).map(roundPoint),
+    detailProjection: { longitude, n, c, r0, centerY, scale: detailProjection.scale(), translate: detailProjection.translate() },
+  };
+});
+
+const helper = `
+// Match the local conic equal-area geometry without a browser dependency.
+// Coordinates are longitude/latitude in degrees; output uses a 960 × 600 canvas.
+export function projectStatePoint(regionOrCode, longitude, latitude) {
+  const region = typeof regionOrCode === 'string'
+    ? mapStates.find(state => state.code === regionOrCode)
+    : regionOrCode;
+  if (!region?.detailProjection || !Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
+  const p = region.detailProjection;
+  const radians = Math.PI / 180;
+  const angle = (longitude - p.longitude) * radians;
+  const lambda = Math.atan2(Math.sin(angle), Math.cos(angle));
+  const r = Math.sqrt(Math.max(0, p.c - 2 * p.n * Math.sin(latitude * radians))) / p.n;
+  const x = r * Math.sin(p.n * lambda);
+  const y = p.r0 - r * Math.cos(p.n * lambda);
+  return [p.translate[0] + p.scale * x, p.translate[1] - p.scale * (y - p.centerY)];
+}
+`;
+await writeFile(join(repository, 'src/us-map.js'), `// Generated by scripts/generate-map.mjs from us-atlas 3.0.1 states-10m.\n// National map: Albers USA. Detail maps: individual conic equal-area projections.\nexport const mapStates = ${JSON.stringify(records)};\n${helper}`);
+console.log(`Generated national and detailed geometry for ${records.length} states.`);
