@@ -35,7 +35,7 @@ function app() {
     <main>
       <section class="intro">
         <div class="eyebrow"><span></span> YOUR HOME, IN FOCUS</div>
-        <h1>Find the place.<br><i>Know the payment.</i></h1>
+        <h1>Know the payment.<br><i>Find the place.</i></h1>
         <p>Explore local home values and property taxes, with weekly mortgage-rate benchmarks to guide your estimate.</p>
       </section>
       <section class="workspace">
