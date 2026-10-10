@@ -1,4 +1,5 @@
 import { amortizationSchedule, calculateMortgage } from './mortgage.js';
+import { mapStates } from './us-map.js';
 
 const states = [
   ['WA',1,1],['MT',3,1],['ND',5,1],['MN',6,1],['WI',7,1],['MI',8,1],['VT',10,1],['ME',11,1],
@@ -19,7 +20,7 @@ function payment() { const result = calculateMortgage(details); return { ...resu
 function zipsForState(code) { return zipSeeds[code] || states.filter(([state]) => state === code).map((_, i) => `${String(states.findIndex(([state]) => state === code) + 10).padStart(2,'0')}${String(101 + i * 73).padStart(3,'0')}`).concat(['10101','20202','30303','40404']); }
 
 function mapMarkup() {
-  return states.map(([code,x,y]) => `<button class="state ${code===selectedState?'active':''}" style="--x:${x};--y:${y}" data-state="${code}" aria-label="Select ${stateNames[code]||code}"><span>${code}</span></button>`).join('');
+  return `<svg class="us-map" viewBox="0 0 960 600" aria-label="United States: choose a state"><g class="map-geography">${mapStates.map(s=>`<path class="geo-state ${s.code===selectedState?'active':''}" d="${s.path}" data-state="${s.code}" tabindex="0" role="button" aria-label="Select ${s.name}" aria-pressed="${s.code===selectedState}"><title>${s.name}</title></path>`).join('')}${mapStates.map(s=>`<text class="state-label" x="${s.center[0]}" y="${s.center[1]}" ${['RI','DE','MD','NJ','CT','MA'].includes(s.code)?'font-size="8"':''}>${s.code}</text>`).join('')}</g></svg>`;
 }
 
 function app() {
@@ -43,7 +44,7 @@ function app() {
             <div class="search"><span>⌕</span><input aria-label="Search by city or ZIP" placeholder="Search city or ZIP"/><kbd>⌘ K</kbd></div>
           </div>
           <div class="map-wrap" id="mapWrap">
-            <div class="map-grid">${mapMarkup()}</div>
+            <div class="geographic-map">${mapMarkup()}</div>
             <div class="map-label"><strong>Choose a state</strong><span>Select anywhere on the map to begin</span></div>
             <div class="compass">N<br><span>✣</span></div>
             <div class="map-controls"><button aria-label="Zoom in">+</button><button aria-label="Zoom out">−</button></div>
@@ -96,7 +97,12 @@ function chartSvg(){ const schedule=amortizationSchedule(details); const sampled
 function compareRow(term){ const old=details.term; details.term=term; const val=payment().total; details.term=old; return `<button class="compare-row ${term===old?'active':''}" data-compare="${term}"><span>${term}-year fixed<small>${details.rate}% rate</small></span><strong>${money(val)}<small>/mo</small></strong></button>`; }
 
 function bind(){
-  document.querySelectorAll('.state').forEach(el=>el.onclick=()=>openState(el.dataset.state));
+  document.querySelectorAll('.geo-state').forEach(el=>{
+    el.onclick=()=>openState(el.dataset.state);
+    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openState(el.dataset.state);}};
+  });
+  let mapScale=1;
+  document.querySelectorAll('.map-controls button').forEach((button,i)=>button.onclick=()=>{mapScale=Math.max(1,Math.min(2,mapScale+(i===0?.25:-.25)));document.querySelector('.map-geography').style.transform=`scale(${mapScale})`;});
   document.querySelector('.close-panel').onclick=closeAll; document.querySelector('.overlay').onclick=closeAll;
   document.querySelectorAll('.zip-dot').forEach(el=>el.onclick=()=>openCalculator(el.dataset.zip));
   document.querySelector('.close-modal').onclick=closeAll; document.querySelector('.edit').onclick=()=>openCalculator(selectedZip);
@@ -108,7 +114,7 @@ function bind(){
   document.querySelectorAll('[data-compare]').forEach(b=>b.onclick=()=>{details.term=+b.dataset.compare; app(); setTimeout(()=>document.querySelector('.data-drawer').classList.add('open'),20);});
   document.querySelector('.save-btn').onclick=()=>{const b=document.querySelector('.save-btn'); b.innerHTML='Saved ✓'; setTimeout(()=>b.innerHTML='Save my scenario <span>↗</span>',1800)};
 }
-function openState(code){ selectedState=code; document.querySelector('.zip-panel h2').textContent=stateNames[code]||code; document.querySelector('.state-shape').innerHTML=zipsForState(code).slice(0,4).map((zip,i)=>`<button class="zip-dot z${i+1}" data-zip="${zip}">${zip}</button>`).join(''); document.querySelectorAll('.zip-dot').forEach(el=>el.onclick=()=>openCalculator(el.dataset.zip)); document.querySelector('.map-wrap').classList.add('zooming'); document.querySelector('.overlay').classList.add('open'); setTimeout(()=>document.querySelector('.zip-panel').classList.add('open'),250); }
+function openState(code){ selectedState=code; document.querySelector('.zip-panel h2').textContent=stateNames[code]||code; const region=mapStates.find(s=>s.code===code); const [[x0,y0],[x1,y1]]=region.bounds; document.querySelector('.state-shape').innerHTML=`<svg class="selected-state-map" viewBox="${x0-10} ${y0-10} ${x1-x0+20} ${y1-y0+20}" aria-label="${region.name} outline"><path d="${region.path}" /></svg><div class="zip-options">`+zipsForState(code).slice(0,4).map((zip,i)=>`<button class="zip-dot z${i+1}" data-zip="${zip}">${zip}</button>`).join('')+'</div>'; document.querySelectorAll('.geo-state').forEach(el=>{el.classList.toggle('active',el.dataset.state===code);el.setAttribute('aria-pressed',el.dataset.state===code);}); document.querySelectorAll('.zip-dot').forEach(el=>el.onclick=()=>openCalculator(el.dataset.zip)); document.querySelector('.map-wrap').classList.add('zooming'); document.querySelector('.overlay').classList.add('open'); setTimeout(()=>document.querySelector('.zip-panel').classList.add('open'),250); }
 function openCalculator(zip){selectedZip=zip; document.querySelector('.zip-panel').classList.remove('open'); document.querySelector('.calc-modal').classList.add('open');}
 function closeAll(){document.querySelectorAll('.overlay,.zip-panel,.calc-modal').forEach(x=>x.classList.remove('open')); document.querySelector('.map-wrap')?.classList.remove('zooming');}
 function updateOutput(){const price=+document.querySelector('#price').value, down=+document.querySelector('#down').value, rate=+document.querySelector('#rate').value; document.querySelector('#priceOut').textContent=money(price); document.querySelector('#downOut').textContent=`${down}% · ${money(price*down/100)}`; document.querySelector('#rateOut').textContent=`${rate.toFixed(2)}%`;}
