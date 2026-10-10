@@ -25,7 +25,7 @@ function app() {
       <section class="intro">
         <div class="eyebrow"><span></span> YOUR HOME, IN FOCUS</div>
         <h1>Find the place.<br><i>Know the payment.</i></h1>
-        <p>Explore the map to get a mortgage estimate shaped by the place you want to call home.</p>
+        <p>Start with a Census ZIP median home value, then set your loan and tax assumptions.</p>
       </section>
       <section class="workspace">
         <div class="map-card">
@@ -39,10 +39,10 @@ function app() {
             <div class="compass">N<br><span>✣</span></div>
             <div class="map-controls"><button aria-label="Zoom in">+</button><button aria-label="Zoom out">−</button><button aria-label="Reset US map">⌂</button></div>
           </div>
-          <div class="map-foot"><span>✦ Rates and estimates tailored to your location</span><span>50 states · ${zipCount.toLocaleString('en-US')} ZIP locations</span></div>
+          <div class="map-foot"><span>✦ ZIP home values · editable loan assumptions</span><span>50 states · ${zipCount.toLocaleString('en-US')} ZIP locations</span></div>
         </div>
         <aside class="estimate-card">
-          <div class="estimate-head"><div><span class="dot"></span> LIVE ESTIMATE</div><button class="edit" title="Edit details">✎</button></div>
+          <div class="estimate-head"><div><span class="dot"></span> PAYMENT ESTIMATE</div><button class="edit" title="Edit details">✎</button></div>
           <p class="location">${stateNames[selectedState]||selectedState} · ${selectedZip}</p>
           <div class="total"><small>ESTIMATED MONTHLY</small><strong>${money(p.total)}</strong><span>/ month</span></div>
           <div class="payment-bar"><i style="width:${p.pi/p.total*100}%"></i><b style="width:${p.tax/p.total*100}%"></b><em></em></div>
@@ -56,9 +56,10 @@ function app() {
           <button class="details-btn">View full breakdown <span>→</span></button>
           <div class="scenario"><span>Based on</span><strong>${money(details.price)} home · ${details.down}% down<br>${details.term}-year fixed at ${details.rate}%</strong></div>
           <p class="price-summary" role="status"></p>
+          <p class="estimate-assumptions">Interest rate and property tax use editable assumptions. ZIP selection sets the home-price default.</p>
         </aside>
       </section>
-      <section class="trust"><div><strong>Built for clarity.</strong><span>No lender bias. No confusing fine print. Just the numbers you need.</span></div><div class="trust-items"><span>✓ Live rate estimates</span><span>✓ Location-aware taxes</span><span>✓ Private by default</span></div></section>
+      <section class="trust"><div><strong>Make it your estimate.</strong><span>Adjust the assumptions to match your lender quote and property.</span></div><div class="trust-items"><span>✓ Census ZIP home values</span><span>✓ Adjustable rates and taxes</span><span>✓ Compare loan terms</span></div></section>
     </main>
     <div class="overlay" aria-hidden="true"></div>
     <div class="zip-panel" role="dialog" aria-modal="true" aria-labelledby="state-title" inert>
@@ -72,10 +73,11 @@ function app() {
     </div>
     <div class="calc-modal" role="dialog" aria-modal="true" aria-label="Mortgage details" inert>
       <button class="close-modal" aria-label="Close">×</button><span class="step">03</span><p class="mini">YOUR NUMBERS</p><h2>Shape your mortgage</h2>
+      <p class="calc-assumptions">The default 6.25% interest rate and 1.1% annual property tax are example assumptions for every ZIP. Adjust them to your lender quote and property.</p>
       <div class="field price-field"><label for="priceAmount">Home price <output id="priceOut" for="price priceAmount">${money(details.price)}</output></label><div class="price-amount"><span aria-hidden="true">$</span><input id="priceAmount" type="number" min="1" max="100000000" step="1" inputmode="numeric" required placeholder="Enter home price" aria-label="Home price in dollars" value="${details.price}"></div><input id="price" type="range" min="1" max="${Math.max(1500000,Math.ceil(details.price*1.25/100000)*100000)}" step="1" value="${details.price}" aria-label="Home price slider"><p class="price-source" role="status" aria-live="polite"></p></div>
       <div class="field"><label>Down payment <output id="downOut">${details.down}% · ${money(details.price*details.down/100)}</output></label><input id="down" type="range" min="3" max="50" value="${details.down}"></div>
       <div class="field"><label>Interest rate <output id="rateOut">${details.rate}%</output></label><input id="rate" type="range" min="3" max="10" step="0.05" value="${details.rate}"></div>
-      <div class="input-grid"><label>Property tax <span><input id="tax" type="number" min="0" step=".1" value="${details.tax}"> % / yr</span></label><label>Insurance <span>$ <input id="insurance" type="number" min="0" step="10" value="${details.insurance}"> / mo</span></label><label>HOA dues <span>$ <input id="hoa" type="number" min="0" step="25" value="${details.hoa}"> / mo</span></label><label>Extra payment <span>$ <input id="extra" type="number" min="0" step="50" value="${details.extra}"> / mo</span></label></div>
+      <div class="input-grid"><label>Property tax assumption <span><input id="tax" type="number" min="0" step=".1" value="${details.tax}"> % / yr</span></label><label>Insurance <span>$ <input id="insurance" type="number" min="0" step="10" value="${details.insurance}"> / mo</span></label><label>HOA dues <span>$ <input id="hoa" type="number" min="0" step="25" value="${details.hoa}"> / mo</span></label><label>Extra payment <span>$ <input id="extra" type="number" min="0" step="50" value="${details.extra}"> / mo</span></label></div>
       <label class="term-label">Loan term</label><div class="terms">${[15,20,30].map(t=>`<button class="${t===details.term?'active':''}" data-term="${t}">${t} year</button>`).join('')}</div>
       <button class="calculate">See my estimate <span>→</span></button>
     </div>
