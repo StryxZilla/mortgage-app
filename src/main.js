@@ -170,8 +170,9 @@ function openCalculator(zip,useMedian=false){
   const modal=document.querySelector('.calc-modal');
   document.querySelectorAll('header,main').forEach(el=>el.inert=true);
   modal.inert=false; modal.classList.add('open');
+  modal.scrollTop=0;
   document.querySelector('.overlay').classList.add('open');
-  document.querySelector('.close-modal').focus();
+  document.querySelector('.close-modal').focus({preventScroll:true});
   const needsMedian=useMedian||homeValue.zip!==zip||['idle','loading','cancelled','error'].includes(homeValue.status);
   if(useMedian||distributionState.selectedZip!==zip)startDistribution(zip);
   if(insuranceMode==='estimate'){applyInsuranceEstimate();renderInsuranceSource();}
