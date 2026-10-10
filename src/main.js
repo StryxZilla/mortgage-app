@@ -30,7 +30,7 @@ function app() {
   document.querySelector('#app').innerHTML = `
     <header>
       <a class="brand" href="#"><span class="brand-mark">⌂</span><span>haven</span></a>
-      <nav><a class="active" href="#calculator">Mortgage calculator</a><a class="homes" href="#homes">Browse homes <em>Coming soon</em></a><a href="#learn">Learn</a></nav>
+      <nav><a class="active" href="#calculator">Mortgage calculator</a><a class="homes" href="#homes">Browse homes <em>Coming soon</em></a></nav>
     </header>
     <main>
       <section class="intro">
