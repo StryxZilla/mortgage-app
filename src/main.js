@@ -1,4 +1,3 @@
-import './style.css';
 import { amortizationSchedule, calculateMortgage } from './mortgage.js';
 
 const states = [
