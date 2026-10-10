@@ -26,7 +26,9 @@ jobs:
       - name: Download the official weekly PMMS history
         run: python3 scripts/download-rates.py
       - name: Validate data and calculator
-        run: npm test
+        run: |
+          python3 test/download-rates.test.py
+          npm test
       - name: Publish refreshed benchmarks
         env:
           GH_TOKEN: ${{ github.token }}

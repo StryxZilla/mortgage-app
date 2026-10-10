@@ -4,7 +4,7 @@ import { mapMarkup, bindMap, closeStateMap, zipCount } from './map-ui.js?v=home-
 import { getZipHomeValue } from './home-values.js?v=home-values-2';
 import { getZipPropertyTax } from './property-taxes.js';
 import { getMortgageRates, rateForTerm, isRateStale } from './rates.js';
-import { rateModalMarkup, bindRateModal } from './rate-modal.js';
+import { rateModalMarkup, bindRateModal } from './rate-modal.js?v=rates-taxes-2';
 
 const stateNames = Object.fromEntries(mapStates.map(s=>[s.code,s.name]));
 let selectedState = 'CA';
