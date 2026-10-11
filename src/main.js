@@ -1,3 +1,4 @@
+import { localMapMarkup, showZipMap, destroyZipMap } from './local-map.js?v=local-map-1';
 import { calculateMortgage } from './mortgage.js';
 import { mapStates } from './us-map.js?v=maps-3';
 import { mapMarkup, bindMap, closeStateMap, resumeStateMap, zipCount } from './map-ui.js?v=price-map-1';
@@ -25,6 +26,7 @@ let distributionState={status:'idle',selectedZip,data:null},distributionRequest=
 function money(n, digits=0) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:digits}).format(n); }
 function payment() { const result = calculateMortgage(details); return { ...result, pi: result.principalAndInterest, tax: result.propertyTax }; }
 function app() {
+  destroyZipMap();
   homeValueRequest++;
   const p = payment();
   document.querySelector('#app').innerHTML = `
@@ -88,7 +90,7 @@ function app() {
       </div>
     </div>
     <div class="calc-modal" role="dialog" aria-modal="true" aria-label="Mortgage details" inert>
-      <button class="close-modal" aria-label="Close">×</button><span class="step">03</span><p class="mini">YOUR NUMBERS</p><h2>Shape your mortgage</h2>
+      <button class="close-modal" aria-label="Close">×</button><div class="calc-layout">${localMapMarkup()}<div class="mortgage-fields"><span class="step">03</span><p class="mini">YOUR NUMBERS</p><h2>Shape your mortgage</h2>
       <p class="calc-assumptions">Start with sourced defaults. Your lender quote and the home's assessed value and exemptions determine your actual rate and tax bill.</p>
       <div class="field price-field"><label for="priceAmount">Home price <output id="priceOut" for="price priceAmount">${money(details.price)}</output></label><div class="price-amount"><span aria-hidden="true">$</span><input id="priceAmount" type="number" min="1" max="100000000" step="1" inputmode="numeric" required placeholder="Enter home price" aria-label="Home price in dollars" value="${details.price}"></div><input id="price" type="range" min="1" max="${Math.max(1500000,Math.ceil(details.price*1.25/100000)*100000)}" step="1" value="${details.price}" aria-label="Home price slider"><p class="price-source" role="status" aria-live="polite"></p></div>
       <div class="price-distribution"></div>
@@ -99,6 +101,7 @@ function app() {
       <div class="input-grid"><label>HOA dues <span>$ <input id="hoa" type="number" min="0" step="25" value="${details.hoa}"> / mo</span></label><label>Extra payment <span>$ <input id="extra" type="number" min="0" step="50" value="${details.extra}"> / mo</span></label><label>Home appreciation <span><input id="appreciation" type="number" min="-20" max="20" step="any" value="${details.appreciation}"> % / yr</span></label></div>
       <label class="term-label">Loan term</label><div class="terms">${[15,20,30].map(t=>`<button class="${t===details.term?'active':''}" data-term="${t}">${t} year</button>`).join('')}</div>
       <button class="calculate">See my estimate <span>→</span></button>
+      </div></div>
     </div>
     <div class="data-drawer">
       <button class="close-drawer" aria-label="Close">×</button><p class="mini">THE LONG VIEW</p><h2>Your path to ownership</h2>
@@ -173,6 +176,7 @@ function openCalculator(zip,useMedian=false){
   modal.scrollTop=0;
   document.querySelector('.overlay').classList.add('open');
   document.querySelector('.close-modal').focus({preventScroll:true});
+  showZipMap(zip,selectedState);
   const needsMedian=useMedian||homeValue.zip!==zip||['idle','loading','cancelled','error'].includes(homeValue.status);
   if(useMedian||distributionState.selectedZip!==zip)startDistribution(zip);
   if(insuranceMode==='estimate'){applyInsuranceEstimate();renderInsuranceSource();}
@@ -212,6 +216,7 @@ function closeAll(){
   if(homeValue.status==='loading')homeValue.status='cancelled';
   const modal=document.querySelector('.calc-modal');
   if(modal.classList.contains('open')){
+    destroyZipMap();
     modal.classList.remove('open');modal.inert=true;
     resumeStateMap(selectedState);renderPriceSource();return;
   }

@@ -181,3 +181,32 @@ button:focus-visible,select:focus-visible{outline:2px solid #8173de;outline-offs
 .price-map-bands span{display:flex;align-items:center;gap:4px;white-space:nowrap}
 .price-map-bands i{width:13px;height:10px;border:1px solid #6e817c55;border-radius:2px}
 @media(max-width:600px){.price-map-legend{padding:8px;font-size:9px}.price-map-bands{gap:5px 9px}.price-map-heading{margin-bottom:5px}}
+
+/* ZIP map and mortgage editor share a workspace. */
+.calc-modal{inset:4vh 4vw;width:auto;padding:30px;border-radius:20px;transform:translateY(14px)}
+.calc-modal.open{transform:none}
+.close-modal{z-index:1100}
+.calc-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,420px);gap:30px;align-items:start}
+.mortgage-fields{min-width:0;padding-top:14px}
+.mortgage-fields h2{font-size:28px}
+.zip-local-panel{position:sticky;top:0;min-width:0;padding-top:14px}
+.zip-local-panel .mini{margin-top:0}
+.zip-local-panel h2{font-size:25px;margin-top:8px;letter-spacing:-.7px}
+.local-map-toolbar{display:flex;justify-content:space-between;gap:8px;align-items:center;margin:18px 0 12px}
+.local-map-styles{display:flex;gap:4px;background:#eae9e1;border-radius:9px;padding:3px}
+.local-map-styles button,.local-map-reset{border:0;border-radius:7px;padding:8px 13px;color:#53665a;background:transparent;font-size:12px}
+.local-map-styles button[aria-pressed=true]{background:#fff;color:#6654b4;box-shadow:0 1px 5px #23352a15}
+.local-map-reset{background:#efede5;border:1px solid #dcdfd5}
+.local-map-frame{position:relative;border:1px solid #d5ddcf;border-radius:12px;overflow:hidden}
+.local-map{height:clamp(280px,62vh,620px);width:100%;background:#e8eee3;font-family:'DM Sans',sans-serif;touch-action:none}
+.local-map-notice{position:absolute;z-index:1000;top:12px;left:56px;right:12px;padding:10px 12px;border:1px solid #dce0d5;border-radius:8px;background:#fffffff2;color:#526555;font-size:12px;line-height:1.5;box-shadow:0 2px 12px #24362615}
+.local-map-notice[hidden]{display:none}
+.local-map-retry{margin-left:8px;padding:4px 8px;border:1px solid #bcb3dc;border-radius:5px;color:#6654b4;background:#f5f2ff}
+.local-map-caption,.local-map-location-note{font-size:11px;color:#68786b;line-height:1.6;margin:10px 0 0}
+.local-map-location-note{color:#8a9389;margin-top:3px}
+.local-map .leaflet-control-attribution{font-size:10px;background:#fffffff0}
+.local-map .leaflet-control-attribution a{color:#496e61}
+.local-map .leaflet-control-zoom a{color:#314f40}
+.local-map .leaflet-control-scale-line{background:#ffffffe6;border-color:#698371;color:#496353}
+@media(max-width:1000px){.calc-layout{grid-template-columns:minmax(0,1fr) minmax(320px,380px);gap:22px}.calc-modal{padding:24px}.local-map{height:56vh}}
+@media(max-width:760px){.calc-modal{inset:12px;padding:22px 18px;border-radius:18px}.calc-layout{display:block}.zip-local-panel{position:static;padding-top:8px}.zip-local-panel h2{font-size:23px;padding-right:35px}.local-map{height:280px}.local-map-toolbar{margin-top:14px}.mortgage-fields{margin-top:24px;padding-top:20px;border-top:1px solid #dce1d4}.mortgage-fields h2{font-size:26px}.local-map-notice{font-size:11px}.close-modal{right:14px;top:14px}.local-map .leaflet-control-attribution{font-size:9px}}

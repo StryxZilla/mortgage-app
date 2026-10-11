@@ -52,3 +52,22 @@ owner-occupied home-value estimates, not current listing or sale prices.
 Surrounding ZIPs retain their price colors at reduced opacity. Closing the
 mortgage editor returns to the state explorer with its city, search and
 zoom preserved, including after calculating and reopening the editor.
+
+Selecting a ZIP also opens an interactive local map beside the mortgage form
+(on phones, above it). Road tiles are OpenStreetMap's standard raster service,
+with visible OSM attribution, normal browser caching and no bulk/offline
+prefetching. Terrain uses the public USGS The National Map USGSTopo service
+(contours, shaded relief, land cover and transportation), with USGS attribution.
+Its native detail is limited to zoom 16; further zoom enlarges those tiles.
+These public services require no API key but do not guarantee availability.
+The app requests only the current map viewport after a ZIP is selected.
+
+Leaflet 1.9.4 is vendored under src/vendor/leaflet with its BSD license and
+loaded on demand. ZIP centers come from the existing postal directory; mapped
+ZIPs without postal centers use the inverse-projected Census area label point.
+Both are explicitly approximate locations, not property addresses. No listing
+pins or MLS data are added. Tiles load independently of the mortgage defaults;
+errors offer retry or switching views. Closing returns to the state explorer.
+
+Provider documentation: https://operations.osmfoundation.org/policies/tiles/
+and https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer.
